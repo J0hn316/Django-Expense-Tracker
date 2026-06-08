@@ -1,0 +1,69 @@
+# -------------------------
+# Python cache files
+# -------------------------
+__pycache__/
+*.py[cod]
+*$py.class
+
+
+# -------------------------
+# Virtual environment
+# -------------------------
+venv/
+.venv/
+env/
+
+
+# -------------------------
+# Environment variables
+# -------------------------
+.env
+.env.local
+.env.*.local
+
+
+# -------------------------
+# Django local database
+# -------------------------
+db.sqlite3
+db.sqlite3-journal
+
+
+# -------------------------
+# Django static/media files
+# -------------------------
+/staticfiles/
+/media/
+
+
+# -------------------------
+# Logs
+# -------------------------
+*.log
+
+
+# -------------------------
+# Test / coverage files
+# -------------------------
+.coverage
+htmlcov/
+.pytest_cache/
+
+
+# -------------------------
+# VS Code / editor files
+# -------------------------
+.vscode/
+.idea/
+
+
+# -------------------------
+# Operating system files
+# -------------------------
+.DS_Store
+Thumbs.db
+
+# -------------------------
+# Node / Tailwind
+# -------------------------
+node_modules/
