@@ -1,6 +1,9 @@
-from django.contrib.auth.models import User
-from django.test import TestCase
 from django.urls import reverse
+from django.test import TestCase
+from django.db import IntegrityError
+from django.contrib.auth.models import User
+
+from .models import Category
 
 
 class HomeViewTests(TestCase):
@@ -109,3 +112,100 @@ class LoginViewTests(TestCase):
         )
 
         self.assertRedirects(response, reverse("tracker:dashboard"))
+
+
+class CategoryModelTests(TestCase):
+    def test_category_can_be_created(self) -> None:
+        user = User.objects.create_user(
+            username="johnny",
+            password="StrongPass123!",
+        )
+
+        category = Category.objects.create(
+            user=user,
+            name="Food",
+            category_type=Category.CategoryType.EXPENSE,
+        )
+
+        self.assertEqual(category.user, user)
+        self.assertEqual(category.name, "Food")
+        self.assertEqual(category.category_type, Category.CategoryType.EXPENSE)
+
+    def test_category_string_representation(self) -> None:
+        user = User.objects.create_user(
+            username="johnny",
+            password="StrongPass123!",
+        )
+
+        category = Category.objects.create(
+            user=user,
+            name="Food",
+            category_type=Category.CategoryType.EXPENSE,
+        )
+
+        self.assertEqual(str(category), "Food (Expense)")
+
+    def test_user_can_have_income_and_expense_category_with_same_name(self) -> None:
+        user = User.objects.create_user(
+            username="johnny",
+            password="StrongPass123!",
+        )
+
+        Category.objects.create(
+            user=user,
+            name="Bonus",
+            category_type=Category.CategoryType.INCOME,
+        )
+
+        Category.objects.create(
+            user=user,
+            name="Bonus",
+            category_type=Category.CategoryType.EXPENSE,
+        )
+
+        self.assertEqual(Category.objects.filter(user=user, name="Bonus").count(), 2)
+
+    def test_duplicate_category_name_and_type_for_same_user_is_not_allowed(
+        self,
+    ) -> None:
+        user = User.objects.create_user(
+            username="johnny",
+            password="StrongPass123!",
+        )
+
+        Category.objects.create(
+            user=user,
+            name="Food",
+            category_type=Category.CategoryType.EXPENSE,
+        )
+
+        with self.assertRaises(IntegrityError):
+            Category.objects.create(
+                user=user,
+                name="Food",
+                category_type=Category.CategoryType.EXPENSE,
+            )
+
+    def test_different_users_can_have_same_category_name_and_type(self) -> None:
+        john = User.objects.create_user(
+            username="johnny",
+            password="StrongPass123!",
+        )
+        jane = User.objects.create_user(
+            username="jane",
+            password="StrongPass123!",
+        )
+
+        Category.objects.create(
+            user=john,
+            name="Food",
+            category_type=Category.CategoryType.EXPENSE,
+        )
+
+        Category.objects.create(
+            user=jane,
+            name="Food",
+            category_type=Category.CategoryType.EXPENSE,
+        )
+
+        self.assertEqual(Category.objects.filter(name="Food").count(), 2)
