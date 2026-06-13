@@ -1,9 +1,14 @@
+from datetime import date
+from decimal import Decimal
+
 from django.urls import reverse
 from django.test import TestCase
 from django.db import IntegrityError
+from django.db.models import RestrictedError
 from django.contrib.auth.models import User
+from django.core.exceptions import ValidationError
 
-from .models import Category
+from .models import Category, Transaction
 
 
 class HomeViewTests(TestCase):
@@ -209,3 +214,165 @@ class CategoryModelTests(TestCase):
         )
 
         self.assertEqual(Category.objects.filter(name="Food").count(), 2)
+
+
+class TransactionModelTests(TestCase):
+    def setUp(self) -> None:
+        self.user = User.objects.create_user(
+            username="johnny",
+            password="StrongPass123!",
+        )
+        self.other_user = User.objects.create_user(
+            username="jane",
+            password="StrongPass123!",
+        )
+
+        self.expense_category = Category.objects.create(
+            user=self.user,
+            name="Food",
+            category_type=Category.CategoryType.EXPENSE,
+        )
+        self.income_category = Category.objects.create(
+            user=self.user,
+            name="Paycheck",
+            category_type=Category.CategoryType.INCOME,
+        )
+        self.other_user_expense_category = Category.objects.create(
+            user=self.other_user,
+            name="Food",
+            category_type=Category.CategoryType.EXPENSE,
+        )
+
+    def test_expense_transaction_can_be_created(self) -> None:
+        transaction = Transaction.objects.create(
+            user=self.user,
+            category=self.expense_category,
+            transaction_type=Transaction.TransactionType.EXPENSE,
+            amount=Decimal("84.32"),
+            description="Groceries",
+            transaction_date=date(2026, 6, 11),
+        )
+
+        self.assertEqual(transaction.user, self.user)
+        self.assertEqual(transaction.category, self.expense_category)
+        self.assertEqual(
+            transaction.transaction_type, Transaction.TransactionType.EXPENSE
+        )
+        self.assertEqual(transaction.amount, Decimal("84.32"))
+        self.assertEqual(transaction.description, "Groceries")
+
+    def test_income_transaction_can_be_created(self) -> None:
+        transaction = Transaction.objects.create(
+            user=self.user,
+            category=self.income_category,
+            transaction_type=Transaction.TransactionType.INCOME,
+            amount=Decimal("2000.00"),
+            description="Biweekly paycheck",
+            transaction_date=date(2026, 6, 11),
+        )
+
+        self.assertEqual(
+            transaction.transaction_type, Transaction.TransactionType.INCOME
+        )
+        self.assertEqual(transaction.amount, Decimal("2000.00"))
+
+    def test_transaction_string_representation(self) -> None:
+        transaction = Transaction.objects.create(
+            user=self.user,
+            category=self.expense_category,
+            transaction_type=Transaction.TransactionType.EXPENSE,
+            amount=Decimal("84.32"),
+            description="Groceries",
+            transaction_date=date(2026, 6, 11),
+        )
+
+        self.assertEqual(str(transaction), "Groceries - 84.32")
+
+    def test_transaction_amount_must_be_positive(self) -> None:
+        transaction = Transaction(
+            user=self.user,
+            category=self.expense_category,
+            transaction_type=Transaction.TransactionType.EXPENSE,
+            amount=Decimal("0.00"),
+            description="Invalid groceries",
+            transaction_date=date(2026, 6, 11),
+        )
+
+        with self.assertRaises(ValidationError):
+            transaction.full_clean()
+
+    def test_transaction_category_must_belong_to_same_user(self) -> None:
+        transaction = Transaction(
+            user=self.user,
+            category=self.other_user_expense_category,
+            transaction_type=Transaction.TransactionType.EXPENSE,
+            amount=Decimal("84.32"),
+            description="Groceries",
+            transaction_date=date(2026, 6, 11),
+        )
+
+        with self.assertRaises(ValidationError):
+            transaction.full_clean()
+
+    def test_transaction_type_must_match_category_type(self) -> None:
+        transaction = Transaction(
+            user=self.user,
+            category=self.income_category,
+            transaction_type=Transaction.TransactionType.EXPENSE,
+            amount=Decimal("84.32"),
+            description="Groceries",
+            transaction_date=date(2026, 6, 11),
+        )
+
+        with self.assertRaises(ValidationError):
+            transaction.full_clean()
+
+    def test_category_with_transactions_cannot_be_deleted(self) -> None:
+        Transaction.objects.create(
+            user=self.user,
+            category=self.expense_category,
+            transaction_type=Transaction.TransactionType.EXPENSE,
+            amount=Decimal("84.32"),
+            description="Groceries",
+            transaction_date=date(2026, 6, 11),
+        )
+
+        with self.assertRaises(RestrictedError):
+            self.expense_category.delete()
+
+    def test_user_deletion_deletes_user_transactions(self) -> None:
+        Transaction.objects.create(
+            user=self.user,
+            category=self.expense_category,
+            transaction_type=Transaction.TransactionType.EXPENSE,
+            amount=Decimal("84.32"),
+            description="Groceries",
+            transaction_date=date(2026, 6, 11),
+        )
+
+        self.user.delete()
+
+        self.assertFalse(Transaction.objects.filter(description="Groceries").exists())
+
+    def test_transactions_are_ordered_by_newest_date_first(self) -> None:
+        older_transaction = Transaction.objects.create(
+            user=self.user,
+            category=self.expense_category,
+            transaction_type=Transaction.TransactionType.EXPENSE,
+            amount=Decimal("25.00"),
+            description="Older transaction",
+            transaction_date=date(2026, 5, 1),
+        )
+        newer_transaction = Transaction.objects.create(
+            user=self.user,
+            category=self.expense_category,
+            transaction_type=Transaction.TransactionType.EXPENSE,
+            amount=Decimal("40.00"),
+            description="Newer transaction",
+            transaction_date=date(2026, 6, 1),
+        )
+
+        transactions = list(Transaction.objects.all())
+
+        self.assertEqual(transactions[0], newer_transaction)
+        self.assertEqual(transactions[1], older_transaction)
