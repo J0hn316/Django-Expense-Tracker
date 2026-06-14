@@ -376,3 +376,176 @@ class TransactionModelTests(TestCase):
 
         self.assertEqual(transactions[0], newer_transaction)
         self.assertEqual(transactions[1], older_transaction)
+
+
+class CategoryViewTests(TestCase):
+    def setUp(self) -> None:
+        self.user = User.objects.create_user(
+            username="johnny",
+            password="StrongPass123!",
+        )
+        self.other_user = User.objects.create_user(
+            username="jane",
+            password="StrongPass123!",
+        )
+
+        self.category = Category.objects.create(
+            user=self.user,
+            name="Food",
+            category_type=Category.CategoryType.EXPENSE,
+        )
+        self.other_user_category = Category.objects.create(
+            user=self.other_user,
+            name="Jane Secret Category",
+            category_type=Category.CategoryType.EXPENSE,
+        )
+
+    def test_logged_out_user_is_redirected_from_category_list(self) -> None:
+        response = self.client.get(reverse("tracker:category_list"))
+
+        expected_url = f"{reverse('login')}?next={reverse('tracker:category_list')}"
+        self.assertRedirects(response, expected_url)
+
+    def test_logged_in_user_can_view_category_list(self) -> None:
+        self.client.login(username="johnny", password="StrongPass123!")
+
+        response = self.client.get(reverse("tracker:category_list"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTemplateUsed(response, "tracker/category_list.html")
+        self.assertContains(response, "Food")
+
+    def test_user_only_sees_their_own_categories(self) -> None:
+        self.client.login(username="johnny", password="StrongPass123!")
+
+        response = self.client.get(reverse("tracker:category_list"))
+
+        self.assertContains(response, "Food")
+        self.assertNotContains(response, "Jane Secret Category")
+
+    def test_logged_in_user_can_create_category(self) -> None:
+        self.client.login(username="johnny", password="StrongPass123!")
+
+        response = self.client.post(
+            reverse("tracker:category_create"),
+            {
+                "name": "Rent",
+                "category_type": Category.CategoryType.EXPENSE,
+            },
+        )
+
+        self.assertRedirects(response, reverse("tracker:category_list"))
+        self.assertTrue(
+            Category.objects.filter(
+                user=self.user,
+                name="Rent",
+                category_type=Category.CategoryType.EXPENSE,
+            ).exists()
+        )
+
+    def test_created_category_is_assigned_to_logged_in_user(self) -> None:
+        self.client.login(username="johnny", password="StrongPass123!")
+
+        self.client.post(
+            reverse("tracker:category_create"),
+            {
+                "name": "Paycheck",
+                "category_type": Category.CategoryType.INCOME,
+            },
+        )
+
+        category = Category.objects.get(name="Paycheck")
+
+        self.assertEqual(category.user, self.user)
+
+    def test_duplicate_category_for_same_user_shows_form_error(self) -> None:
+        self.client.login(username="johnny", password="StrongPass123!")
+
+        response = self.client.post(
+            reverse("tracker:category_create"),
+            {
+                "name": "Food",
+                "category_type": Category.CategoryType.EXPENSE,
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(
+            response,
+            "You already have a category with this name and type.",
+        )
+        self.assertEqual(
+            Category.objects.filter(
+                user=self.user,
+                name__iexact="Food",
+                category_type=Category.CategoryType.EXPENSE,
+            ).count(),
+            1,
+        )
+
+    def test_logged_in_user_can_update_their_own_category(self) -> None:
+        self.client.login(username="johnny", password="StrongPass123!")
+
+        response = self.client.post(
+            reverse("tracker:category_update", args=[self.category.pk]),
+            {
+                "name": "Groceries",
+                "category_type": Category.CategoryType.EXPENSE,
+            },
+        )
+
+        self.assertRedirects(response, reverse("tracker:category_list"))
+
+        self.category.refresh_from_db()
+
+        self.assertEqual(self.category.name, "Groceries")
+
+    def test_user_cannot_update_another_users_category(self) -> None:
+        self.client.login(username="johnny", password="StrongPass123!")
+
+        response = self.client.post(
+            reverse("tracker:category_update", args=[self.other_user_category.pk]),
+            {
+                "name": "Hacked Category",
+                "category_type": Category.CategoryType.EXPENSE,
+            },
+        )
+
+        self.assertEqual(response.status_code, 404)
+
+        self.other_user_category.refresh_from_db()
+
+        self.assertEqual(self.other_user_category.name, "Jane Secret Category")
+
+    def test_logged_in_user_can_delete_their_own_category(self) -> None:
+        self.client.login(username="johnny", password="StrongPass123!")
+
+        response = self.client.post(
+            reverse("tracker:category_delete", args=[self.category.pk])
+        )
+
+        self.assertRedirects(response, reverse("tracker:category_list"))
+        self.assertFalse(Category.objects.filter(pk=self.category.pk).exists())
+
+    def test_user_cannot_delete_another_users_category(self) -> None:
+        self.client.login(username="johnny", password="StrongPass123!")
+
+        response = self.client.post(
+            reverse("tracker:category_delete", args=[self.other_user_category.pk])
+        )
+
+        self.assertEqual(response.status_code, 404)
+        self.assertTrue(
+            Category.objects.filter(pk=self.other_user_category.pk).exists()
+        )
+
+    def test_delete_category_confirmation_page_loads(self) -> None:
+        self.client.login(username="johnny", password="StrongPass123!")
+
+        response = self.client.get(
+            reverse("tracker:category_delete", args=[self.category.pk])
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTemplateUsed(response, "tracker/category_confirm_delete.html")
+        self.assertContains(response, "Are you sure you want to delete")

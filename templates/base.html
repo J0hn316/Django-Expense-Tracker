@@ -18,6 +18,7 @@
 
         {% if request.user.is_authenticated %}
           <a href="{% url 'tracker:dashboard' %}">Dashboard</a>
+          <a href="{% url 'tracker:category_list' %}">Categories</a>
 
           <form method="post" action="{% url 'logout' %}" style="display: inline">
             {% csrf_token %}
@@ -29,6 +30,14 @@
         {% endif %}
       </nav>
     </header>
+
+    {% if messages %}
+      <section>
+        {% for message in messages %}
+          <p>{{ message }}</p>
+        {% endfor %}
+      </section>
+    {% endif %}
 
     <main>
       {% block content %}
