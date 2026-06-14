@@ -19,6 +19,7 @@
         {% if request.user.is_authenticated %}
           <a href="{% url 'tracker:dashboard' %}">Dashboard</a>
           <a href="{% url 'tracker:category_list' %}">Categories</a>
+          <a href="{% url 'tracker:transaction_list' %}">Transactions</a>
 
           <form method="post" action="{% url 'logout' %}" style="display: inline">
             {% csrf_token %}

@@ -2,7 +2,7 @@ from django import forms
 from django.contrib.auth.forms import UserCreationForm
 from django.contrib.auth.models import User
 
-from .models import Category
+from .models import Category, Transaction
 
 
 class RegisterForm(UserCreationForm):
@@ -50,5 +50,54 @@ class CategoryForm(forms.ModelForm):
                 raise forms.ValidationError(
                     "You already have a category with this name and type."
                 )
+
+        return cleaned_data
+
+
+class TransactionForm(forms.ModelForm):
+    class Meta:
+        model = Transaction
+        fields = [
+            "transaction_type",
+            "category",
+            "amount",
+            "description",
+            "transaction_date",
+        ]
+        widgets = {
+            "transaction_date": forms.DateInput(attrs={"type": "date"}),
+        }
+
+    def __init__(self, *args, user: User | None = None, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self.user = user
+
+        if self.user:
+            self.instance.user = self.user
+            self.fields["category"].queryset = Category.objects.filter(user=self.user)
+
+    def clean_description(self) -> str:
+        description = self.cleaned_data["description"].strip()
+
+        if not description:
+            raise forms.ValidationError("Description cannot be empty.")
+
+        return description
+
+    def clean(self) -> dict:
+        cleaned_data = super().clean()
+
+        category = cleaned_data.get("category")
+        transaction_type = cleaned_data.get("transaction_type")
+
+        if self.user and category and category.user != self.user:
+            raise forms.ValidationError(
+                "The selected category must belong to your account."
+            )
+
+        if category and transaction_type and category.category_type != transaction_type:
+            raise forms.ValidationError(
+                "The selected category type must match the transaction type."
+            )
 
         return cleaned_data

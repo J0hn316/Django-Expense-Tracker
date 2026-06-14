@@ -549,3 +549,264 @@ class CategoryViewTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertTemplateUsed(response, "tracker/category_confirm_delete.html")
         self.assertContains(response, "Are you sure you want to delete")
+
+
+class TransactionViewTests(TestCase):
+    def setUp(self) -> None:
+        self.user = User.objects.create_user(
+            username="johnny",
+            password="StrongPass123!",
+        )
+        self.other_user = User.objects.create_user(
+            username="jane",
+            password="StrongPass123!",
+        )
+
+        self.expense_category = Category.objects.create(
+            user=self.user,
+            name="Food",
+            category_type=Category.CategoryType.EXPENSE,
+        )
+        self.income_category = Category.objects.create(
+            user=self.user,
+            name="Paycheck",
+            category_type=Category.CategoryType.INCOME,
+        )
+        self.other_user_category = Category.objects.create(
+            user=self.other_user,
+            name="Jane Food",
+            category_type=Category.CategoryType.EXPENSE,
+        )
+
+        self.transaction = Transaction.objects.create(
+            user=self.user,
+            category=self.expense_category,
+            transaction_type=Transaction.TransactionType.EXPENSE,
+            amount=Decimal("84.32"),
+            description="Groceries",
+            transaction_date=date(2026, 6, 11),
+        )
+        self.other_user_transaction = Transaction.objects.create(
+            user=self.other_user,
+            category=self.other_user_category,
+            transaction_type=Transaction.TransactionType.EXPENSE,
+            amount=Decimal("50.00"),
+            description="Jane Secret Transaction",
+            transaction_date=date(2026, 6, 11),
+        )
+
+    def test_logged_out_user_is_redirected_from_transaction_list(self) -> None:
+        response = self.client.get(reverse("tracker:transaction_list"))
+
+        expected_url = f"{reverse('login')}?next={reverse('tracker:transaction_list')}"
+        self.assertRedirects(response, expected_url)
+
+    def test_logged_in_user_can_view_transaction_list(self) -> None:
+        self.client.login(username="johnny", password="StrongPass123!")
+
+        response = self.client.get(reverse("tracker:transaction_list"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTemplateUsed(response, "tracker/transaction_list.html")
+        self.assertContains(response, "Groceries")
+
+    def test_user_only_sees_their_own_transactions(self) -> None:
+        self.client.login(username="johnny", password="StrongPass123!")
+
+        response = self.client.get(reverse("tracker:transaction_list"))
+
+        self.assertContains(response, "Groceries")
+        self.assertNotContains(response, "Jane Secret Transaction")
+
+    def test_logged_in_user_can_view_transaction_detail(self) -> None:
+        self.client.login(username="johnny", password="StrongPass123!")
+
+        response = self.client.get(
+            reverse("tracker:transaction_detail", args=[self.transaction.pk])
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTemplateUsed(response, "tracker/transaction_detail.html")
+        self.assertContains(response, "Groceries")
+        self.assertContains(response, "84.32")
+
+    def test_user_cannot_view_another_users_transaction_detail(self) -> None:
+        self.client.login(username="johnny", password="StrongPass123!")
+
+        response = self.client.get(
+            reverse(
+                "tracker:transaction_detail",
+                args=[self.other_user_transaction.pk],
+            )
+        )
+
+        self.assertEqual(response.status_code, 404)
+
+    def test_logged_in_user_can_create_transaction(self) -> None:
+        self.client.login(username="johnny", password="StrongPass123!")
+
+        response = self.client.post(
+            reverse("tracker:transaction_create"),
+            {
+                "transaction_type": Transaction.TransactionType.EXPENSE,
+                "category": self.expense_category.pk,
+                "amount": "25.50",
+                "description": "Gas",
+                "transaction_date": "2026-06-12",
+            },
+        )
+
+        self.assertRedirects(response, reverse("tracker:transaction_list"))
+        self.assertTrue(
+            Transaction.objects.filter(
+                user=self.user,
+                description="Gas",
+                amount=Decimal("25.50"),
+            ).exists()
+        )
+
+    def test_created_transaction_is_assigned_to_logged_in_user(self) -> None:
+        self.client.login(username="johnny", password="StrongPass123!")
+
+        self.client.post(
+            reverse("tracker:transaction_create"),
+            {
+                "transaction_type": Transaction.TransactionType.INCOME,
+                "category": self.income_category.pk,
+                "amount": "2000.00",
+                "description": "Paycheck",
+                "transaction_date": "2026-06-13",
+            },
+        )
+
+        transaction = Transaction.objects.get(description="Paycheck")
+
+        self.assertEqual(transaction.user, self.user)
+
+    def test_user_cannot_create_transaction_with_another_users_category(self) -> None:
+        self.client.login(username="johnny", password="StrongPass123!")
+
+        response = self.client.post(
+            reverse("tracker:transaction_create"),
+            {
+                "transaction_type": Transaction.TransactionType.EXPENSE,
+                "category": self.other_user_category.pk,
+                "amount": "25.50",
+                "description": "Invalid transaction",
+                "transaction_date": "2026-06-12",
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(
+            Transaction.objects.filter(description="Invalid transaction").exists()
+        )
+
+    def test_transaction_type_must_match_category_type_in_form(self) -> None:
+        self.client.login(username="johnny", password="StrongPass123!")
+
+        response = self.client.post(
+            reverse("tracker:transaction_create"),
+            {
+                "transaction_type": Transaction.TransactionType.EXPENSE,
+                "category": self.income_category.pk,
+                "amount": "25.50",
+                "description": "Wrong category type",
+                "transaction_date": "2026-06-12",
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(
+            response,
+            "The selected category type must match the transaction type.",
+        )
+        self.assertFalse(
+            Transaction.objects.filter(description="Wrong category type").exists()
+        )
+
+    def test_logged_in_user_can_update_their_own_transaction(self) -> None:
+        self.client.login(username="johnny", password="StrongPass123!")
+
+        response = self.client.post(
+            reverse("tracker:transaction_update", args=[self.transaction.pk]),
+            {
+                "transaction_type": Transaction.TransactionType.EXPENSE,
+                "category": self.expense_category.pk,
+                "amount": "99.99",
+                "description": "Updated groceries",
+                "transaction_date": "2026-06-14",
+            },
+        )
+
+        self.assertRedirects(
+            response,
+            reverse("tracker:transaction_detail", args=[self.transaction.pk]),
+        )
+
+        self.transaction.refresh_from_db()
+
+        self.assertEqual(self.transaction.description, "Updated groceries")
+        self.assertEqual(self.transaction.amount, Decimal("99.99"))
+
+    def test_user_cannot_update_another_users_transaction(self) -> None:
+        self.client.login(username="johnny", password="StrongPass123!")
+
+        response = self.client.post(
+            reverse(
+                "tracker:transaction_update",
+                args=[self.other_user_transaction.pk],
+            ),
+            {
+                "transaction_type": Transaction.TransactionType.EXPENSE,
+                "category": self.expense_category.pk,
+                "amount": "1.00",
+                "description": "Hacked transaction",
+                "transaction_date": "2026-06-14",
+            },
+        )
+
+        self.assertEqual(response.status_code, 404)
+
+        self.other_user_transaction.refresh_from_db()
+
+        self.assertEqual(
+            self.other_user_transaction.description,
+            "Jane Secret Transaction",
+        )
+
+    def test_logged_in_user_can_delete_their_own_transaction(self) -> None:
+        self.client.login(username="johnny", password="StrongPass123!")
+
+        response = self.client.post(
+            reverse("tracker:transaction_delete", args=[self.transaction.pk])
+        )
+
+        self.assertRedirects(response, reverse("tracker:transaction_list"))
+        self.assertFalse(Transaction.objects.filter(pk=self.transaction.pk).exists())
+
+    def test_user_cannot_delete_another_users_transaction(self) -> None:
+        self.client.login(username="johnny", password="StrongPass123!")
+
+        response = self.client.post(
+            reverse(
+                "tracker:transaction_delete",
+                args=[self.other_user_transaction.pk],
+            )
+        )
+
+        self.assertEqual(response.status_code, 404)
+        self.assertTrue(
+            Transaction.objects.filter(pk=self.other_user_transaction.pk).exists()
+        )
+
+    def test_delete_transaction_confirmation_page_loads(self) -> None:
+        self.client.login(username="johnny", password="StrongPass123!")
+
+        response = self.client.get(
+            reverse("tracker:transaction_delete", args=[self.transaction.pk])
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTemplateUsed(response, "tracker/transaction_confirm_delete.html")
+        self.assertContains(response, "Are you sure you want to delete")
