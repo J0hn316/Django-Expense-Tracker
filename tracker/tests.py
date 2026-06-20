@@ -810,3 +810,169 @@ class TransactionViewTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertTemplateUsed(response, "tracker/transaction_confirm_delete.html")
         self.assertContains(response, "Are you sure you want to delete")
+
+
+class DashboardAggregationTests(TestCase):
+    def setUp(self) -> None:
+        self.user = User.objects.create_user(
+            username="johnny",
+            password="StrongPass123!",
+        )
+        self.other_user = User.objects.create_user(
+            username="jane",
+            password="StrongPass123!",
+        )
+
+        self.food_category = Category.objects.create(
+            user=self.user,
+            name="Food",
+            category_type=Category.CategoryType.EXPENSE,
+        )
+        self.housing_category = Category.objects.create(
+            user=self.user,
+            name="Housing",
+            category_type=Category.CategoryType.EXPENSE,
+        )
+        self.income_category = Category.objects.create(
+            user=self.user,
+            name="Paycheck",
+            category_type=Category.CategoryType.INCOME,
+        )
+
+        self.other_user_category = Category.objects.create(
+            user=self.other_user,
+            name="Jane Food",
+            category_type=Category.CategoryType.EXPENSE,
+        )
+
+        Transaction.objects.create(
+            user=self.user,
+            category=self.income_category,
+            transaction_type=Transaction.TransactionType.INCOME,
+            amount=Decimal("1500.00"),
+            description="First paycheck",
+            transaction_date=date(2026, 6, 1),
+        )
+        Transaction.objects.create(
+            user=self.user,
+            category=self.income_category,
+            transaction_type=Transaction.TransactionType.INCOME,
+            amount=Decimal("1500.00"),
+            description="Second paycheck",
+            transaction_date=date(2026, 6, 15),
+        )
+        Transaction.objects.create(
+            user=self.user,
+            category=self.food_category,
+            transaction_type=Transaction.TransactionType.EXPENSE,
+            amount=Decimal("75.50"),
+            description="Groceries",
+            transaction_date=date(2026, 6, 10),
+        )
+        Transaction.objects.create(
+            user=self.user,
+            category=self.food_category,
+            transaction_type=Transaction.TransactionType.EXPENSE,
+            amount=Decimal("25.00"),
+            description="Restaurant",
+            transaction_date=date(2026, 6, 12),
+        )
+        Transaction.objects.create(
+            user=self.user,
+            category=self.housing_category,
+            transaction_type=Transaction.TransactionType.EXPENSE,
+            amount=Decimal("950.00"),
+            description="Rent",
+            transaction_date=date(2026, 6, 5),
+        )
+
+        Transaction.objects.create(
+            user=self.other_user,
+            category=self.other_user_category,
+            transaction_type=Transaction.TransactionType.EXPENSE,
+            amount=Decimal("9999.99"),
+            description="Jane private expense",
+            transaction_date=date(2026, 6, 20),
+        )
+
+    def test_dashboard_displays_total_income(self) -> None:
+        self.client.login(username="johnny", password="StrongPass123!")
+
+        response = self.client.get(reverse("tracker:dashboard"))
+
+        self.assertEqual(response.context["total_income"], Decimal("3000.00"))
+        self.assertContains(response, "3000.00")
+
+    def test_dashboard_displays_total_expenses(self) -> None:
+        self.client.login(username="johnny", password="StrongPass123!")
+
+        response = self.client.get(reverse("tracker:dashboard"))
+
+        self.assertEqual(response.context["total_expenses"], Decimal("1050.50"))
+        self.assertContains(response, "1050.50")
+
+    def test_dashboard_calculates_balance(self) -> None:
+        self.client.login(username="johnny", password="StrongPass123!")
+
+        response = self.client.get(reverse("tracker:dashboard"))
+
+        self.assertEqual(response.context["balance"], Decimal("1949.50"))
+        self.assertContains(response, "1949.50")
+
+    def test_dashboard_groups_expenses_by_category(self) -> None:
+        self.client.login(username="johnny", password="StrongPass123!")
+
+        response = self.client.get(reverse("tracker:dashboard"))
+
+        category_totals = list(response.context["expense_totals_by_category"])
+
+        self.assertEqual(
+            category_totals,
+            [
+                {
+                    "category__name": "Housing",
+                    "total": Decimal("950.00"),
+                },
+                {
+                    "category__name": "Food",
+                    "total": Decimal("100.50"),
+                },
+            ],
+        )
+
+    def test_dashboard_does_not_include_another_users_transactions(self) -> None:
+        self.client.login(username="johnny", password="StrongPass123!")
+
+        response = self.client.get(reverse("tracker:dashboard"))
+
+        self.assertEqual(response.context["total_income"], Decimal("3000.00"))
+        self.assertEqual(response.context["total_expenses"], Decimal("1050.50"))
+        self.assertNotContains(response, "Jane private expense")
+        self.assertNotContains(response, "9999.99")
+
+    def test_dashboard_displays_five_most_recent_transactions(self) -> None:
+        self.client.login(username="johnny", password="StrongPass123!")
+
+        response = self.client.get(reverse("tracker:dashboard"))
+
+        recent_transactions = list(response.context["recent_transactions"])
+
+        self.assertEqual(len(recent_transactions), 5)
+        self.assertEqual(recent_transactions[0].description, "Second paycheck")
+        self.assertEqual(recent_transactions[1].description, "Restaurant")
+        self.assertEqual(recent_transactions[2].description, "Groceries")
+
+    def test_dashboard_with_no_transactions_uses_zero_totals(self) -> None:
+        User.objects.create_user(
+            username="emptyuser",
+            password="StrongPass123!",
+        )
+        self.client.login(username="emptyuser", password="StrongPass123!")
+
+        response = self.client.get(reverse("tracker:dashboard"))
+
+        self.assertEqual(response.context["total_income"], Decimal("0.00"))
+        self.assertEqual(response.context["total_expenses"], Decimal("0.00"))
+        self.assertEqual(response.context["balance"], Decimal("0.00"))
+        self.assertContains(response, "No expense data is available yet.")
+        self.assertContains(response, "You do not have any transactions yet.")

@@ -1,6 +1,7 @@
+from decimal import Decimal
 from django.contrib import messages
 from django.contrib.auth import login
-from django.db.models import RestrictedError
+from django.db.models import RestrictedError, Sum
 from django.http import HttpRequest, HttpResponse
 from django.contrib.auth.decorators import login_required
 from django.shortcuts import get_object_or_404, redirect, render
@@ -30,7 +31,36 @@ def register(request: HttpRequest) -> HttpRequest:
 
 @login_required
 def dashboard(request: HttpRequest) -> HttpRequest:
-    return render(request, "tracker/dashboard.html")
+    transactions = Transaction.objects.filter(user=request.user)
+
+    total_income = transactions.filter(
+        transaction_type=Transaction.TransactionType.INCOME
+    ).aggregate(total=Sum("amount", default=Decimal("0.00")))["total"]
+
+    total_expenses = transactions.filter(
+        transaction_type=Transaction.TransactionType.EXPENSE
+    ).aggregate(total=Sum("amount", default=Decimal("0.00")))["total"]
+
+    balance = total_income - total_expenses
+
+    expense_totals_by_category = (
+        transactions.filter(transaction_type=Transaction.TransactionType.EXPENSE)
+        .values("category__name")
+        .annotate(total=Sum("amount"))
+        .order_by("-total", "category__name")
+    )
+
+    recent_transactions = transactions.select_related("category")[:5]
+
+    context = {
+        "total_income": total_income,
+        "total_expenses": total_expenses,
+        "balance": balance,
+        "expense_totals_by_category": expense_totals_by_category,
+        "recent_transactions": recent_transactions,
+    }
+
+    return render(request, "tracker/dashboard.html", context)
 
 
 @login_required
