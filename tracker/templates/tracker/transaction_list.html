@@ -8,43 +8,77 @@
   <h1>Transactions</h1>
 
   <p>
-    <a href="{% url 'tracker:transaction_create' %}">Create New Transaction</a>
+    <a href="{% url 'tracker:transaction_create' %}">
+      Create New Transaction
+    </a>
   </p>
 
-  {% if transactions %}
-    <table>
-      <thead>
-        <tr>
-          <th>Date</th>
-          <th>Description</th>
-          <th>Type</th>
-          <th>Category</th>
-          <th>Amount</th>
-          <th>Actions</th>
-        </tr>
-      </thead>
+  <section>
+    <h2>Search and Filter</h2>
 
-      <tbody>
-        {% for transaction in transactions %}
+    <form method="get">
+      {{ filter_form.as_p }}
+
+      <button type="submit">Apply Filters</button>
+
+      {% if filters_are_active %}
+        <a href="{% url 'tracker:transaction_list' %}">
+          Clear Filters
+        </a>
+      {% endif %}
+    </form>
+  </section>
+
+  <section>
+    <h2>Results</h2>
+
+    {% if transactions %}
+      <table>
+        <thead>
           <tr>
-            <td>{{ transaction.transaction_date }}</td>
-            <td>
-              <a href="{% url 'tracker:transaction_detail' transaction.pk %}">
-                {{ transaction.description }}
-              </a>
-            </td>
-            <td>{{ transaction.get_transaction_type_display }}</td>
-            <td>{{ transaction.category.name }}</td>
-            <td>${{ transaction.amount }}</td>
-            <td>
-              <a href="{% url 'tracker:transaction_update' transaction.pk %}">Edit</a>
-              <a href="{% url 'tracker:transaction_delete' transaction.pk %}">Delete</a>
-            </td>
+            <th>Date</th>
+            <th>Description</th>
+            <th>Type</th>
+            <th>Category</th>
+            <th>Amount</th>
+            <th>Actions</th>
           </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  {% else %}
-    <p>You do not have any transactions yet.</p>
-  {% endif %}
+        </thead>
+
+        <tbody>
+          {% for transaction in transactions %}
+            <tr>
+              <td>{{ transaction.transaction_date }}</td>
+
+              <td>
+                <a href="{% url 'tracker:transaction_detail' transaction.pk %}">
+                  {{ transaction.description }}
+                </a>
+              </td>
+
+              <td>{{ transaction.get_transaction_type_display }}</td>
+              <td>{{ transaction.category.name }}</td>
+              <td>${{ transaction.amount|floatformat:2 }}</td>
+
+              <td>
+                <a href="{% url 'tracker:transaction_update' transaction.pk %}">
+                  Edit
+                </a>
+
+                <a href="{% url 'tracker:transaction_delete' transaction.pk %}">
+                  Delete
+                </a>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      {% if filters_are_active %}
+        <p>No transactions matched your filters.</p>
+      {% else %}
+        <p>You do not have any transactions yet.</p>
+      {% endif %}
+    {% endif %}
+  </section>
 {% endblock %}

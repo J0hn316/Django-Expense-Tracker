@@ -1,13 +1,13 @@
 from decimal import Decimal
 from django.contrib import messages
 from django.contrib.auth import login
-from django.db.models import RestrictedError, Sum
+from django.db.models import RestrictedError, Sum, Q
 from django.http import HttpRequest, HttpResponse
 from django.contrib.auth.decorators import login_required
 from django.shortcuts import get_object_or_404, redirect, render
 
 from .models import Category, Transaction
-from .forms import CategoryForm, RegisterForm, TransactionForm
+from .forms import CategoryForm, RegisterForm, TransactionForm, TransactionFilterForm
 
 
 def home(request: HttpRequest) -> HttpResponse:
@@ -151,10 +151,53 @@ def transaction_list(request: HttpRequest) -> HttpResponse:
         "category"
     )
 
+    filter_form = TransactionFilterForm(
+        request.GET or None,
+        user=request.user,
+    )
+
+    if filter_form.is_valid():
+        search = filter_form.cleaned_data["search"]
+        transaction_type = filter_form.cleaned_data["transaction_type"]
+        category = filter_form.cleaned_data["category"]
+        month = filter_form.cleaned_data["month"]
+        year = filter_form.cleaned_data["year"]
+
+        if search:
+            transactions = transactions.filter(
+                Q(description__icontains=search) | Q(category__name__icontains=search)
+            )
+
+        if transaction_type:
+            transactions = transactions.filter(transaction_type=transaction_type)
+
+        if category:
+            transactions = transactions.filter(category=category)
+
+        if month:
+            transactions = transactions.filter(transaction_date__month=int(month))
+
+        if year:
+            transactions = transactions.filter(transaction_date__year=int(year))
+
+    context = {
+        "transactions": transactions,
+        "filter_form": filter_form,
+        "filters_are_active": any(
+            [
+                request.GET.get("search"),
+                request.GET.get("transaction_type"),
+                request.GET.get("category"),
+                request.GET.get("month"),
+                request.GET.get("year"),
+            ]
+        ),
+    }
+
     return render(
         request,
         "tracker/transaction_list.html",
-        {"transactions": transactions},
+        context,
     )
 
 

@@ -976,3 +976,236 @@ class DashboardAggregationTests(TestCase):
         self.assertEqual(response.context["balance"], Decimal("0.00"))
         self.assertContains(response, "No expense data is available yet.")
         self.assertContains(response, "You do not have any transactions yet.")
+
+
+class TransactionFilterTests(TestCase):
+    def setUp(self) -> None:
+        self.user = User.objects.create_user(
+            username="johnny",
+            password="StrongPass123!",
+        )
+        self.other_user = User.objects.create_user(
+            username="jane",
+            password="StrongPass123!",
+        )
+
+        self.food_category = Category.objects.create(
+            user=self.user,
+            name="Food",
+            category_type=Category.CategoryType.EXPENSE,
+        )
+        self.transportation_category = Category.objects.create(
+            user=self.user,
+            name="Transportation",
+            category_type=Category.CategoryType.EXPENSE,
+        )
+        self.income_category = Category.objects.create(
+            user=self.user,
+            name="Paycheck",
+            category_type=Category.CategoryType.INCOME,
+        )
+        self.other_user_category = Category.objects.create(
+            user=self.other_user,
+            name="Jane Food",
+            category_type=Category.CategoryType.EXPENSE,
+        )
+
+        Transaction.objects.create(
+            user=self.user,
+            category=self.food_category,
+            transaction_type=Transaction.TransactionType.EXPENSE,
+            amount=Decimal("75.50"),
+            description="Weekly groceries",
+            transaction_date=date(2026, 6, 10),
+        )
+        Transaction.objects.create(
+            user=self.user,
+            category=self.food_category,
+            transaction_type=Transaction.TransactionType.EXPENSE,
+            amount=Decimal("25.00"),
+            description="Restaurant dinner",
+            transaction_date=date(2026, 5, 15),
+        )
+        Transaction.objects.create(
+            user=self.user,
+            category=self.transportation_category,
+            transaction_type=Transaction.TransactionType.EXPENSE,
+            amount=Decimal("40.00"),
+            description="Gas station",
+            transaction_date=date(2025, 6, 5),
+        )
+        Transaction.objects.create(
+            user=self.user,
+            category=self.income_category,
+            transaction_type=Transaction.TransactionType.INCOME,
+            amount=Decimal("1500.00"),
+            description="Biweekly paycheck",
+            transaction_date=date(2026, 6, 1),
+        )
+        Transaction.objects.create(
+            user=self.other_user,
+            category=self.other_user_category,
+            transaction_type=Transaction.TransactionType.EXPENSE,
+            amount=Decimal("999.99"),
+            description="Jane private groceries",
+            transaction_date=date(2026, 6, 10),
+        )
+
+        self.client.login(
+            username="johnny",
+            password="StrongPass123!",
+        )
+
+    def test_search_filters_by_description(self) -> None:
+        response = self.client.get(
+            reverse("tracker:transaction_list"),
+            {"search": "groceries"},
+        )
+
+        self.assertContains(response, "Weekly groceries")
+        self.assertNotContains(response, "Restaurant dinner")
+        self.assertNotContains(response, "Gas station")
+        self.assertNotContains(response, "Biweekly paycheck")
+
+    def test_search_is_case_insensitive(self) -> None:
+        response = self.client.get(
+            reverse("tracker:transaction_list"),
+            {"search": "GROCERIES"},
+        )
+
+        self.assertContains(response, "Weekly groceries")
+
+    def test_search_filters_by_category_name(self) -> None:
+        response = self.client.get(
+            reverse("tracker:transaction_list"),
+            {"search": "Transportation"},
+        )
+
+        self.assertContains(response, "Gas station")
+        self.assertNotContains(response, "Weekly groceries")
+
+    def test_filter_by_transaction_type(self) -> None:
+        response = self.client.get(
+            reverse("tracker:transaction_list"),
+            {
+                "transaction_type": Transaction.TransactionType.INCOME,
+            },
+        )
+
+        self.assertContains(response, "Biweekly paycheck")
+        self.assertNotContains(response, "Weekly groceries")
+        self.assertNotContains(response, "Restaurant dinner")
+        self.assertNotContains(response, "Gas station")
+
+    def test_filter_by_category(self) -> None:
+        response = self.client.get(
+            reverse("tracker:transaction_list"),
+            {"category": self.food_category.pk},
+        )
+
+        self.assertContains(response, "Weekly groceries")
+        self.assertContains(response, "Restaurant dinner")
+        self.assertNotContains(response, "Gas station")
+        self.assertNotContains(response, "Biweekly paycheck")
+
+    def test_filter_by_month(self) -> None:
+        response = self.client.get(
+            reverse("tracker:transaction_list"),
+            {"month": "6"},
+        )
+
+        self.assertContains(response, "Weekly groceries")
+        self.assertContains(response, "Gas station")
+        self.assertContains(response, "Biweekly paycheck")
+        self.assertNotContains(response, "Restaurant dinner")
+
+    def test_filter_by_year(self) -> None:
+        response = self.client.get(
+            reverse("tracker:transaction_list"),
+            {"year": "2025"},
+        )
+
+        self.assertContains(response, "Gas station")
+        self.assertNotContains(response, "Weekly groceries")
+        self.assertNotContains(response, "Restaurant dinner")
+        self.assertNotContains(response, "Biweekly paycheck")
+
+    def test_multiple_filters_can_be_combined(self) -> None:
+        response = self.client.get(
+            reverse("tracker:transaction_list"),
+            {
+                "transaction_type": Transaction.TransactionType.EXPENSE,
+                "category": self.food_category.pk,
+                "month": "6",
+                "year": "2026",
+            },
+        )
+
+        self.assertContains(response, "Weekly groceries")
+        self.assertNotContains(response, "Restaurant dinner")
+        self.assertNotContains(response, "Gas station")
+        self.assertNotContains(response, "Biweekly paycheck")
+
+    def test_filter_form_only_contains_logged_in_users_categories(self) -> None:
+        response = self.client.get(reverse("tracker:transaction_list"))
+
+        category_queryset = response.context["filter_form"].fields["category"].queryset
+
+        self.assertIn(self.food_category, category_queryset)
+        self.assertIn(self.transportation_category, category_queryset)
+        self.assertIn(self.income_category, category_queryset)
+        self.assertNotIn(self.other_user_category, category_queryset)
+
+    def test_user_cannot_filter_using_another_users_category(self) -> None:
+        response = self.client.get(
+            reverse("tracker:transaction_list"),
+            {"category": self.other_user_category.pk},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.context["filter_form"].errors)
+        self.assertNotContains(response, "Jane private groceries")
+
+    def test_filters_never_include_another_users_transactions(self) -> None:
+        response = self.client.get(
+            reverse("tracker:transaction_list"),
+            {
+                "search": "groceries",
+                "month": "6",
+                "year": "2026",
+            },
+        )
+
+        self.assertContains(response, "Weekly groceries")
+        self.assertNotContains(response, "Jane private groceries")
+
+    def test_no_matches_displays_filtered_empty_state(self) -> None:
+        response = self.client.get(
+            reverse("tracker:transaction_list"),
+            {"search": "does not exist"},
+        )
+
+        self.assertContains(
+            response,
+            "No transactions matched your filters.",
+        )
+        self.assertNotContains(
+            response,
+            "You do not have any transactions yet.",
+        )
+
+    def test_clear_filters_link_appears_when_filter_is_active(self) -> None:
+        response = self.client.get(
+            reverse("tracker:transaction_list"),
+            {"search": "groceries"},
+        )
+
+        self.assertContains(response, "Clear Filters")
+
+    def test_year_choices_only_include_users_transaction_years(self) -> None:
+        response = self.client.get(reverse("tracker:transaction_list"))
+
+        year_choices = response.context["filter_form"].fields["year"].choices
+
+        self.assertIn(("2026", "2026"), year_choices)
+        self.assertIn(("2025", "2025"), year_choices)

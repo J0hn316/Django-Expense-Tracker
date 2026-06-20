@@ -1,4 +1,5 @@
 from django import forms
+from datetime import date
 from django.contrib.auth.forms import UserCreationForm
 from django.contrib.auth.models import User
 
@@ -101,3 +102,85 @@ class TransactionForm(forms.ModelForm):
             )
 
         return cleaned_data
+
+
+class TransactionFilterForm(forms.Form):
+    search = forms.CharField(
+        required=False,
+        label="Search",
+        widget=forms.TextInput(
+            attrs={"placeholder": "Search descriptions or categories"}
+        ),
+    )
+    transaction_type = forms.ChoiceField(
+        required=False,
+        label="Type",
+        choices=[
+            ("", "All Types"),
+            *Transaction.TransactionType.choices,
+        ],
+    )
+    category = forms.ModelChoiceField(
+        required=False,
+        queryset=Category.objects.none(),
+        empty_label="All Categories",
+    )
+    month = forms.ChoiceField(
+        required=False,
+        choices=[("", "All Months")],
+    )
+    year = forms.ChoiceField(
+        required=False,
+        choices=[("", "All Years")],
+    )
+
+    def __init__(
+        self,
+        *args,
+        user: User | None = None,
+        **kwargs,
+    ) -> None:
+        super().__init__(*args, **kwargs)
+        self.user = user
+
+        if self.user:
+            self.fields["category"].queryset = Category.objects.filter(user=self.user)
+
+            transaction_dates = Transaction.objects.filter(user=self.user).dates(
+                "transaction_date",
+                "year",
+                order="DESC",
+            )
+
+            available_years = [
+                transaction_date.year for transaction_date in transaction_dates
+            ]
+
+            self.fields["year"].choices = [
+                ("", "All Years"),
+                *[(str(year), str(year)) for year in available_years],
+            ]
+
+        self.fields["month"].choices = [
+            ("", "All Months"),
+            *[
+                (str(month_number), month_name)
+                for month_number, month_name in enumerate(
+                    [
+                        "January",
+                        "February",
+                        "March",
+                        "April",
+                        "May",
+                        "June",
+                        "July",
+                        "August",
+                        "September",
+                        "October",
+                        "November",
+                        "December",
+                    ],
+                    start=1,
+                )
+            ],
+        ]
