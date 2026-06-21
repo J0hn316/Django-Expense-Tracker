@@ -1209,3 +1209,169 @@ class TransactionFilterTests(TestCase):
 
         self.assertIn(("2026", "2026"), year_choices)
         self.assertIn(("2025", "2025"), year_choices)
+
+
+class TransactionPaginationTests(TestCase):
+    def setUp(self) -> None:
+        self.user = User.objects.create_user(
+            username="johnny",
+            password="StrongPass123!",
+        )
+        self.other_user = User.objects.create_user(
+            username="jane",
+            password="StrongPass123!",
+        )
+
+        self.expense_category = Category.objects.create(
+            user=self.user,
+            name="Food",
+            category_type=Category.CategoryType.EXPENSE,
+        )
+        self.other_user_category = Category.objects.create(
+            user=self.other_user,
+            name="Jane Food",
+            category_type=Category.CategoryType.EXPENSE,
+        )
+
+        for transaction_number in range(1, 13):
+            Transaction.objects.create(
+                user=self.user,
+                category=self.expense_category,
+                transaction_type=Transaction.TransactionType.EXPENSE,
+                amount=Decimal("10.00"),
+                description=f"John transaction {transaction_number}",
+                transaction_date=date(2026, 6, transaction_number),
+            )
+
+        Transaction.objects.create(
+            user=self.other_user,
+            category=self.other_user_category,
+            transaction_type=Transaction.TransactionType.EXPENSE,
+            amount=Decimal("999.99"),
+            description="Jane private transaction",
+            transaction_date=date(2026, 6, 20),
+        )
+
+        self.client.login(
+            username="johnny",
+            password="StrongPass123!",
+        )
+
+    def test_first_page_contains_five_transactions(self) -> None:
+        response = self.client.get(reverse("tracker:transaction_list"))
+
+        self.assertEqual(len(response.context["page_obj"]), 5)
+        self.assertEqual(response.context["page_obj"].number, 1)
+        self.assertEqual(
+            response.context["page_obj"].paginator.num_pages,
+            3,
+        )
+
+    def test_second_page_contains_next_five_transactions(self) -> None:
+        response = self.client.get(
+            reverse("tracker:transaction_list"),
+            {"page": "2"},
+        )
+
+        page_obj = response.context["page_obj"]
+
+        self.assertEqual(page_obj.number, 2)
+        self.assertEqual(len(page_obj), 5)
+        self.assertTrue(page_obj.has_previous())
+        self.assertTrue(page_obj.has_next())
+
+    def test_last_page_contains_remaining_transactions(self) -> None:
+        response = self.client.get(
+            reverse("tracker:transaction_list"),
+            {"page": "3"},
+        )
+
+        page_obj = response.context["page_obj"]
+
+        self.assertEqual(page_obj.number, 3)
+        self.assertEqual(len(page_obj), 2)
+        self.assertTrue(page_obj.has_previous())
+        self.assertFalse(page_obj.has_next())
+
+    def test_invalid_page_value_returns_first_page(self) -> None:
+        response = self.client.get(
+            reverse("tracker:transaction_list"),
+            {"page": "invalid"},
+        )
+
+        self.assertEqual(response.context["page_obj"].number, 1)
+
+    def test_page_beyond_range_returns_last_page(self) -> None:
+        response = self.client.get(
+            reverse("tracker:transaction_list"),
+            {"page": "999"},
+        )
+
+        self.assertEqual(response.context["page_obj"].number, 3)
+
+    def test_pagination_does_not_include_other_users_transactions(self) -> None:
+        response = self.client.get(
+            reverse("tracker:transaction_list"),
+            {"page": "1"},
+        )
+
+        self.assertEqual(
+            response.context["page_obj"].paginator.count,
+            12,
+        )
+        self.assertNotContains(response, "Jane private transaction")
+
+    def test_filter_query_parameters_are_preserved(self) -> None:
+        response = self.client.get(
+            reverse("tracker:transaction_list"),
+            {
+                "search": "John",
+                "transaction_type": Transaction.TransactionType.EXPENSE,
+                "month": "6",
+                "year": "2026",
+                "page": "2",
+            },
+        )
+
+        self.assertEqual(
+            response.context["query_string"],
+            "search=John&transaction_type=expense&month=6&year=2026",
+        )
+
+    def test_page_parameter_is_not_duplicated_in_query_string(self) -> None:
+        response = self.client.get(
+            reverse("tracker:transaction_list"),
+            {
+                "search": "John",
+                "page": "2",
+            },
+        )
+
+        query_string = response.context["query_string"]
+
+        self.assertEqual(query_string, "search=John")
+        self.assertNotIn("page=", query_string)
+
+    def test_filtered_results_are_paginated(self) -> None:
+        Transaction.objects.create(
+            user=self.user,
+            category=self.expense_category,
+            transaction_type=Transaction.TransactionType.EXPENSE,
+            amount=Decimal("20.00"),
+            description="Unrelated purchase",
+            transaction_date=date(2025, 1, 1),
+        )
+
+        response = self.client.get(
+            reverse("tracker:transaction_list"),
+            {
+                "search": "John transaction",
+                "year": "2026",
+            },
+        )
+
+        page_obj = response.context["page_obj"]
+
+        self.assertEqual(page_obj.paginator.count, 12)
+        self.assertEqual(page_obj.paginator.num_pages, 3)
+        self.assertNotContains(response, "Unrelated purchase")

@@ -30,55 +30,94 @@
   </section>
 
   <section>
-    <h2>Results</h2>
+  <h2>Results</h2>
 
-    {% if transactions %}
-      <table>
-        <thead>
+  {% if transactions %}
+    <table>
+      <thead>
+        <tr>
+          <th>Date</th>
+          <th>Description</th>
+          <th>Type</th>
+          <th>Category</th>
+          <th>Amount</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+
+      <tbody>
+        {% for transaction in transactions %}
           <tr>
-            <th>Date</th>
-            <th>Description</th>
-            <th>Type</th>
-            <th>Category</th>
-            <th>Amount</th>
-            <th>Actions</th>
+            <td>{{ transaction.transaction_date }}</td>
+
+            <td>
+              <a href="{% url 'tracker:transaction_detail' transaction.pk %}">
+                {{ transaction.description }}
+              </a>
+            </td>
+
+            <td>{{ transaction.get_transaction_type_display }}</td>
+            <td>{{ transaction.category.name }}</td>
+            <td>${{ transaction.amount|floatformat:2 }}</td>
+
+            <td>
+              <a href="{% url 'tracker:transaction_update' transaction.pk %}">
+                Edit
+              </a>
+
+              <a href="{% url 'tracker:transaction_delete' transaction.pk %}">
+                Delete
+              </a>
+            </td>
           </tr>
-        </thead>
-
-        <tbody>
-          {% for transaction in transactions %}
-            <tr>
-              <td>{{ transaction.transaction_date }}</td>
-
-              <td>
-                <a href="{% url 'tracker:transaction_detail' transaction.pk %}">
-                  {{ transaction.description }}
-                </a>
-              </td>
-
-              <td>{{ transaction.get_transaction_type_display }}</td>
-              <td>{{ transaction.category.name }}</td>
-              <td>${{ transaction.amount|floatformat:2 }}</td>
-
-              <td>
-                <a href="{% url 'tracker:transaction_update' transaction.pk %}">
-                  Edit
-                </a>
-
-                <a href="{% url 'tracker:transaction_delete' transaction.pk %}">
-                  Delete
-                </a>
-              </td>
-            </tr>
-          {% endfor %}
-        </tbody>
-      </table>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    {% if filters_are_active %}
+      <p>No transactions matched your filters.</p>
     {% else %}
-      {% if filters_are_active %}
-        <p>No transactions matched your filters.</p>
-      {% else %}
-        <p>You do not have any transactions yet.</p>
-      {% endif %}
+      <p>You do not have any transactions yet.</p>
     {% endif %}
-  </section>
+  {% endif %}
+
+  {% if page_obj.paginator.num_pages > 1 %}
+    <nav aria-label="Transaction pagination">
+      {% if page_obj.has_previous %}
+        <a href="?{% if query_string %}{{ query_string }}&{% endif %}page=1">
+          First
+        </a>
+
+        <a href="?{% if query_string %}{{ query_string }}&{% endif %}page={{ page_obj.previous_page_number }}">
+          Previous
+        </a>
+      {% endif %}
+
+      {% for page_number in page_obj.paginator.page_range %}
+        {% if page_number == page_obj.number %}
+          <strong aria-current="page">{{ page_number }}</strong>
+        {% else %}
+          <a href="?{% if query_string %}{{ query_string }}&{% endif %}page={{ page_number }}">
+            {{ page_number }}
+          </a>
+        {% endif %}
+      {% endfor %}
+
+      {% if page_obj.has_next %}
+        <a href="?{% if query_string %}{{ query_string }}&{% endif %}page={{ page_obj.next_page_number }}">
+          Next
+        </a>
+
+        <a href="?{% if query_string %}{{ query_string }}&{% endif %}page={{ page_obj.paginator.num_pages }}">
+          Last
+        </a>
+      {% endif %}
+    </nav>
+
+    <p>
+      Page {{ page_obj.number }}
+      of {{ page_obj.paginator.num_pages }}
+    </p>
+  {% endif %}
+</section>
 {% endblock %}

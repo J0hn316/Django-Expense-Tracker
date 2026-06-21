@@ -1,6 +1,7 @@
 from decimal import Decimal
 from django.contrib import messages
 from django.contrib.auth import login
+from django.core.paginator import Paginator
 from django.db.models import RestrictedError, Sum, Q
 from django.http import HttpRequest, HttpResponse
 from django.contrib.auth.decorators import login_required
@@ -180,9 +181,20 @@ def transaction_list(request: HttpRequest) -> HttpResponse:
         if year:
             transactions = transactions.filter(transaction_date__year=int(year))
 
+    paginator = Paginator(transactions, 5)
+
+    page_number = request.GET.get("page")
+    page_obj = paginator.get_page(page_number)
+
+    query_parameters = request.GET.copy()
+    query_parameters.pop("page", None)
+    query_string = query_parameters.urlencode()
+
     context = {
-        "transactions": transactions,
+        "transactions": page_obj,
+        "page_obj": page_obj,
         "filter_form": filter_form,
+        "query_string": query_string,
         "filters_are_active": any(
             [
                 request.GET.get("search"),
