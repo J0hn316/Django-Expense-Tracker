@@ -5,17 +5,35 @@
 {% endblock %}
 
 {% block content %}
-  <h1>Delete Transaction</h1>
+  <section class="card form-card">
+    <h1>Delete Transaction</h1>
 
-  <p>
-    Are you sure you want to delete
-    <strong>{{ transaction.description }} - ${{ transaction.amount }}</strong>?
-  </p>
+    <p>
+      Are you sure you want to delete
+      <strong>
+        {{ transaction.description }} — ${{ transaction.amount|floatformat:2 }}
+      </strong>?
+    </p>
 
-  <form method="post">
-    {% csrf_token %}
+    <p class="amount-expense">
+      This action cannot be undone.
+    </p>
 
-    <button type="submit">Yes, Delete</button>
-    <a href="{% url 'tracker:transaction_detail' transaction.pk %}">Cancel</a>
-  </form>
+    <form method="post">
+      {% csrf_token %}
+
+      <div class="actions">
+        <button class="button button-danger" type="submit">
+          Yes, Delete
+        </button>
+
+        <a
+          class="button button-secondary"
+          href="{% url 'tracker:transaction_detail' transaction.pk %}"
+        >
+          Cancel
+        </a>
+      </div>
+    </form>
+  </section>
 {% endblock %}

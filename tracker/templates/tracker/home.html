@@ -5,7 +5,35 @@
 {% endblock %}
 
 {% block content %}
-  <h1>Personal Expense Tracker</h1>
+  <section class="hero card">
+    <h1>Take control of your finances</h1>
 
-  <p>Track your income, expenses, and monthly spending.</p>
+    <p>
+      Track income and expenses, organize transactions by category,
+      search your history, and understand where your money goes.
+    </p>
+
+    <div class="actions" style="justify-content: center">
+      {% if request.user.is_authenticated %}
+        <a class="button" href="{% url 'tracker:dashboard' %}">
+          View Dashboard
+        </a>
+
+        <a
+          class="button button-secondary"
+          href="{% url 'tracker:transaction_create' %}"
+        >
+          Add Transaction
+        </a>
+      {% else %}
+        <a class="button" href="{% url 'tracker:register' %}">
+          Create Account
+        </a>
+
+        <a class="button button-secondary" href="{% url 'login' %}">
+          Log In
+        </a>
+      {% endif %}
+    </div>
+  </section>
 {% endblock %}

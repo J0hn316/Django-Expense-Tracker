@@ -5,16 +5,57 @@
 {% endblock %}
 
 {% block content %}
-  <h1>{{ transaction.description }}</h1>
+  <section class="card form-card">
+    <header class="page-header">
+      <div>
+        <h1>{{ transaction.description }}</h1>
+        <p class="page-subtitle">Transaction details</p>
+      </div>
+    </header>
 
-  <p><strong>Type:</strong> {{ transaction.get_transaction_type_display }}</p>
-  <p><strong>Category:</strong> {{ transaction.category.name }}</p>
-  <p><strong>Amount:</strong> ${{ transaction.amount }}</p>
-  <p><strong>Date:</strong> {{ transaction.transaction_date }}</p>
+    <dl class="detail-list">
+      <dt>Type</dt>
+      <dd>{{ transaction.get_transaction_type_display }}</dd>
 
-  <p>
-    <a href="{% url 'tracker:transaction_update' transaction.pk %}">Edit</a>
-    <a href="{% url 'tracker:transaction_delete' transaction.pk %}">Delete</a>
-    <a href="{% url 'tracker:transaction_list' %}">Back to Transactions</a>
-  </p>
+      <dt>Category</dt>
+      <dd>{{ transaction.category.name }}</dd>
+
+      <dt>Amount</dt>
+      <dd class="
+        {% if transaction.transaction_type == 'income' %}
+          amount-income
+        {% else %}
+          amount-expense
+        {% endif %}
+      ">
+        ${{ transaction.amount|floatformat:2 }}
+      </dd>
+
+      <dt>Date</dt>
+      <dd>{{ transaction.transaction_date }}</dd>
+    </dl>
+
+    <div class="actions">
+      <a
+        class="button"
+        href="{% url 'tracker:transaction_update' transaction.pk %}"
+      >
+        Edit
+      </a>
+
+      <a
+        class="button button-danger"
+        href="{% url 'tracker:transaction_delete' transaction.pk %}"
+      >
+        Delete
+      </a>
+
+      <a
+        class="button button-secondary"
+        href="{% url 'tracker:transaction_list' %}"
+      >
+        Back
+      </a>
+    </div>
+  </section>
 {% endblock %}

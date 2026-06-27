@@ -5,36 +5,73 @@
 {% endblock %}
 
 {% block content %}
-  <h1>Categories</h1>
+  <header class="page-header">
+    <div>
+      <h1>Categories</h1>
+      <p class="page-subtitle">
+        Organize your income and expense transactions.
+      </p>
+    </div>
 
-  <p>
-    <a href="{% url 'tracker:category_create' %}">Create New Category</a>
-  </p>
+    <a class="button" href="{% url 'tracker:category_create' %}">
+      Add Category
+    </a>
+  </header>
 
-  {% if categories %}
-    <table>
-      <thead>
-        <tr>
-          <th>Name</th>
-          <th>Type</th>
-          <th>Actions</th>
-        </tr>
-      </thead>
+  <section class="card">
+    {% if categories %}
+      <div class="table-wrapper">
+        <table>
+          <thead>
+            <tr>
+              <th scope="col">Name</th>
+              <th scope="col">Type</th>
+              <th scope="col">Actions</th>
+            </tr>
+          </thead>
 
-      <tbody>
-        {% for category in categories %}
-          <tr>
-            <td>{{ category.name }}</td>
-            <td>{{ category.get_category_type_display }}</td>
-            <td>
-              <a href="{% url 'tracker:category_update' category.pk %}">Edit</a>
-              <a href="{% url 'tracker:category_delete' category.pk %}">Delete</a>
-            </td>
-          </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  {% else %}
-    <p>You do not have any categories yet.</p>
-  {% endif %}
+          <tbody>
+            {% for category in categories %}
+              <tr>
+                <td>{{ category.name }}</td>
+
+                <td class="
+                  {% if category.category_type == 'income' %}
+                    amount-income
+                  {% else %}
+                    amount-expense
+                  {% endif %}
+                ">
+                  {{ category.get_category_type_display }}
+                </td>
+
+                <td>
+                  <div class="actions">
+                    <a href="{% url 'tracker:category_update' category.pk %}">
+                      Edit
+                    </a>
+
+                    <a
+                      class="amount-expense"
+                      href="{% url 'tracker:category_delete' category.pk %}"
+                    >
+                      Delete
+                    </a>
+                  </div>
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <div class="empty-state">
+        <p>You do not have any categories yet.</p>
+
+        <a class="button" href="{% url 'tracker:category_create' %}">
+          Create Your First Category
+        </a>
+      </div>
+    {% endif %}
+  </section>
 {% endblock %}

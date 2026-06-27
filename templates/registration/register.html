@@ -5,18 +5,26 @@
 {% endblock %}
 
 {% block content %}
-  <h1>Create an Account</h1>
+  <section class="card auth-card">
+    <h1>Create an Account</h1>
 
-  <form method="post">
-    {% csrf_token %}
+    <p class="page-subtitle">
+      Start tracking your personal income and expenses.
+    </p>
 
-    {{ form.as_p }}
+    <form method="post">
+      {% csrf_token %}
 
-    <button type="submit">Register</button>
-  </form>
+      {{ form.as_p }}
 
-  <p>
-    Already have an account?
-    <a href="{% url 'login' %}">Log in</a>
-  </p>
+      <button class="button" type="submit">
+        Register
+      </button>
+    </form>
+
+    <p>
+      Already have an account?
+      <a href="{% url 'login' %}">Log in</a>
+    </p>
+  </section>
 {% endblock %}

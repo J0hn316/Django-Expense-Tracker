@@ -5,102 +5,140 @@
 {% endblock %}
 
 {% block content %}
-  <h1>Dashboard</h1>
-
-  <p>Welcome, {{ request.user.username }}.</p>
-
-  <section>
-    <h2>Financial Summary</h2>
-
+  <header class="page-header">
     <div>
-      <h3>Total Income</h3>
-      <p>${{ total_income|floatformat:2 }}</p>
+      <h1>Dashboard</h1>
+      <p class="page-subtitle">
+        Welcome back, {{ request.user.username }}.
+      </p>
     </div>
 
-    <div>
-      <h3>Total Expenses</h3>
-      <p>${{ total_expenses|floatformat:2 }}</p>
-    </div>
+    <a class="button" href="{% url 'tracker:transaction_create' %}">
+      Add Transaction
+    </a>
+  </header>
 
-    <div>
-      <h3>Balance</h3>
-      <p>${{ balance|floatformat:2 }}</p>
-    </div>
+  <section class="summary-grid" aria-label="Financial summary">
+    <article class="card summary-card">
+      <h2>Total Income</h2>
+      <p class="summary-value amount-income">
+        ${{ total_income|floatformat:2 }}
+      </p>
+    </article>
+
+    <article class="card summary-card">
+      <h2>Total Expenses</h2>
+      <p class="summary-value amount-expense">
+        ${{ total_expenses|floatformat:2 }}
+      </p>
+    </article>
+
+    <article class="card summary-card">
+      <h2>Balance</h2>
+
+      <p class="
+        summary-value
+        {% if balance < 0 %}
+          balance-negative
+        {% else %}
+          balance-positive
+        {% endif %}
+      ">
+        ${{ balance|floatformat:2 }}
+      </p>
+    </article>
   </section>
 
-  <section>
-    <h2>Expenses by Category</h2>
+  <section class="card">
+    <h2 class="section-heading">Expenses by Category</h2>
 
     {% if expense_totals_by_category %}
-      <table>
-        <thead>
-          <tr>
-            <th>Category</th>
-            <th>Total</th>
-          </tr>
-        </thead>
-
-        <tbody>
-          {% for category_total in expense_totals_by_category %}
+      <div class="table-wrapper">
+        <table>
+          <thead>
             <tr>
-              <td>{{ category_total.category__name }}</td>
-              <td>${{ category_total.total|floatformat:2 }}</td>
+              <th scope="col">Category</th>
+              <th scope="col">Total</th>
             </tr>
-          {% endfor %}
-        </tbody>
-      </table>
+          </thead>
+
+          <tbody>
+            {% for category_total in expense_totals_by_category %}
+              <tr>
+                <td>{{ category_total.category__name }}</td>
+                <td class="amount-expense">
+                  ${{ category_total.total|floatformat:2 }}
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
     {% else %}
-      <p>No expense data is available yet.</p>
+      <div class="empty-state">
+        No expense data is available yet.
+      </div>
     {% endif %}
   </section>
 
-  <section>
-    <h2>Recent Transactions</h2>
+  <section class="card">
+    <div class="page-header">
+      <h2 class="section-heading">Recent Transactions</h2>
+
+      <a href="{% url 'tracker:transaction_list' %}">
+        View All
+      </a>
+    </div>
 
     {% if recent_transactions %}
-      <table>
-        <thead>
-          <tr>
-            <th>Date</th>
-            <th>Description</th>
-            <th>Type</th>
-            <th>Category</th>
-            <th>Amount</th>
-          </tr>
-        </thead>
-
-        <tbody>
-          {% for transaction in recent_transactions %}
+      <div class="table-wrapper">
+        <table>
+          <thead>
             <tr>
-              <td>{{ transaction.transaction_date }}</td>
-
-              <td>
-                <a href="{% url 'tracker:transaction_detail' transaction.pk %}">
-                  {{ transaction.description }}
-                </a>
-              </td>
-
-              <td>{{ transaction.get_transaction_type_display }}</td>
-              <td>{{ transaction.category.name }}</td>
-              <td>${{ transaction.amount|floatformat:2 }}</td>
+              <th scope="col">Date</th>
+              <th scope="col">Description</th>
+              <th scope="col">Type</th>
+              <th scope="col">Category</th>
+              <th scope="col">Amount</th>
             </tr>
-          {% endfor %}
-        </tbody>
-      </table>
+          </thead>
+
+          <tbody>
+            {% for transaction in recent_transactions %}
+              <tr>
+                <td>{{ transaction.transaction_date }}</td>
+
+                <td>
+                  <a href="{% url 'tracker:transaction_detail' transaction.pk %}">
+                    {{ transaction.description }}
+                  </a>
+                </td>
+
+                <td>{{ transaction.get_transaction_type_display }}</td>
+                <td>{{ transaction.category.name }}</td>
+
+                <td class="
+                  {% if transaction.transaction_type == 'income' %}
+                    amount-income
+                  {% else %}
+                    amount-expense
+                  {% endif %}
+                ">
+                  ${{ transaction.amount|floatformat:2 }}
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
     {% else %}
-      <p>You do not have any transactions yet.</p>
+      <div class="empty-state">
+        <p>You do not have any transactions yet.</p>
+
+        <a class="button" href="{% url 'tracker:transaction_create' %}">
+          Create Your First Transaction
+        </a>
+      </div>
     {% endif %}
   </section>
-
-  <p>
-    <a href="{% url 'tracker:transaction_create' %}">
-      Create New Transaction
-    </a>
-  </p>
-
-  <p>
-    <a href="{% url 'tracker:transaction_list' %}">
-      View All Transactions
-    </a>
-  </p>
 {% endblock %}

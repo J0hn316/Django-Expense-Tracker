@@ -1,3 +1,5 @@
+{% load static %}
+
 <!DOCTYPE html>
 <html lang="en">
   <head>
@@ -9,38 +11,52 @@
         Expense Tracker
       {% endblock %}
     </title>
+
+    <link rel="stylesheet" href="{% static 'tracker/styles.css' %}" />
   </head>
 
   <body>
-    <header>
-      <nav>
-        <a href="{% url 'tracker:home' %}">Expense Tracker</a>
+    <header class="site-header">
+      <nav class="navbar container" aria-label="Main navigation">
+        <a class="brand" href="{% url 'tracker:home' %}">
+          Expense Tracker
+        </a>
 
-        {% if request.user.is_authenticated %}
-          <a href="{% url 'tracker:dashboard' %}">Dashboard</a>
-          <a href="{% url 'tracker:category_list' %}">Categories</a>
-          <a href="{% url 'tracker:transaction_list' %}">Transactions</a>
+        <div class="nav-links">
+          {% if request.user.is_authenticated %}
+            <a href="{% url 'tracker:dashboard' %}">Dashboard</a>
+            <a href="{% url 'tracker:category_list' %}">Categories</a>
+            <a href="{% url 'tracker:transaction_list' %}">Transactions</a>
 
-          <form method="post" action="{% url 'logout' %}" style="display: inline">
-            {% csrf_token %}
-            <button type="submit">Log Out</button>
-          </form>
-        {% else %}
-          <a href="{% url 'login' %}">Log In</a>
-          <a href="{% url 'tracker:register' %}">Register</a>
-        {% endif %}
+            <form
+              class="inline-form"
+              method="post"
+              action="{% url 'logout' %}"
+            >
+              {% csrf_token %}
+              <button class="button button-link" type="submit">
+                Log Out
+              </button>
+            </form>
+          {% else %}
+            <a href="{% url 'login' %}">Log In</a>
+            <a href="{% url 'tracker:register' %}">Register</a>
+          {% endif %}
+        </div>
       </nav>
     </header>
 
     {% if messages %}
-      <section>
+      <section class="alerts container" aria-label="Notifications">
         {% for message in messages %}
-          <p>{{ message }}</p>
+          <p class="alert alert-{{ message.tags }}">
+            {{ message }}
+          </p>
         {% endfor %}
       </section>
     {% endif %}
 
-    <main>
+    <main class="main-content container">
       {% block content %}
       {% endblock %}
     </main>

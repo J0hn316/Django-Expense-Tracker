@@ -5,119 +5,165 @@
 {% endblock %}
 
 {% block content %}
-  <h1>Transactions</h1>
+  <header class="page-header">
+    <div>
+      <h1>Transactions</h1>
+      <p class="page-subtitle">
+        Search, filter, and manage your financial history.
+      </p>
+    </div>
 
-  <p>
-    <a href="{% url 'tracker:transaction_create' %}">
-      Create New Transaction
+    <a class="button" href="{% url 'tracker:transaction_create' %}">
+      Add Transaction
     </a>
-  </p>
+  </header>
 
-  <section>
-    <h2>Search and Filter</h2>
+  <section class="card">
+    <h2 class="section-heading">Search and Filter</h2>
 
     <form method="get">
-      {{ filter_form.as_p }}
+      <div class="filter-grid">
+        {{ filter_form.as_p }}
+      </div>
 
-      <button type="submit">Apply Filters</button>
+      <div class="actions" style="margin-top: 1rem">
+        <button class="button" type="submit">
+          Apply Filters
+        </button>
 
-      {% if filters_are_active %}
-        <a href="{% url 'tracker:transaction_list' %}">
-          Clear Filters
-        </a>
-      {% endif %}
+        {% if filters_are_active %}
+          <a
+            class="button button-secondary"
+            href="{% url 'tracker:transaction_list' %}"
+          >
+            Clear Filters
+          </a>
+        {% endif %}
+      </div>
     </form>
   </section>
 
-  <section>
-  <h2>Results</h2>
+  <section class="card">
+    <h2 class="section-heading">Results</h2>
 
-  {% if transactions %}
-    <table>
-      <thead>
-        <tr>
-          <th>Date</th>
-          <th>Description</th>
-          <th>Type</th>
-          <th>Category</th>
-          <th>Amount</th>
-          <th>Actions</th>
-        </tr>
-      </thead>
+    {% if transactions %}
+      <div class="table-wrapper">
+        <table>
+          <thead>
+            <tr>
+              <th scope="col">Date</th>
+              <th scope="col">Description</th>
+              <th scope="col">Type</th>
+              <th scope="col">Category</th>
+              <th scope="col">Amount</th>
+              <th scope="col">Actions</th>
+            </tr>
+          </thead>
 
-      <tbody>
-        {% for transaction in transactions %}
-          <tr>
-            <td>{{ transaction.transaction_date }}</td>
+          <tbody>
+            {% for transaction in transactions %}
+              <tr>
+                <td>{{ transaction.transaction_date }}</td>
 
-            <td>
-              <a href="{% url 'tracker:transaction_detail' transaction.pk %}">
-                {{ transaction.description }}
-              </a>
-            </td>
+                <td>
+                  <a href="{% url 'tracker:transaction_detail' transaction.pk %}">
+                    {{ transaction.description }}
+                  </a>
+                </td>
 
-            <td>{{ transaction.get_transaction_type_display }}</td>
-            <td>{{ transaction.category.name }}</td>
-            <td>${{ transaction.amount|floatformat:2 }}</td>
+                <td>{{ transaction.get_transaction_type_display }}</td>
+                <td>{{ transaction.category.name }}</td>
 
-            <td>
-              <a href="{% url 'tracker:transaction_update' transaction.pk %}">
-                Edit
-              </a>
+                <td class="
+                  {% if transaction.transaction_type == 'income' %}
+                    amount-income
+                  {% else %}
+                    amount-expense
+                  {% endif %}
+                ">
+                  ${{ transaction.amount|floatformat:2 }}
+                </td>
 
-              <a href="{% url 'tracker:transaction_delete' transaction.pk %}">
-                Delete
-              </a>
-            </td>
-          </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  {% else %}
-    {% if filters_are_active %}
-      <p>No transactions matched your filters.</p>
+                <td>
+                  <div class="actions">
+                    <a
+                      href="{% url 'tracker:transaction_update' transaction.pk %}"
+                    >
+                      Edit
+                    </a>
+
+                    <a
+                      class="amount-expense"
+                      href="{% url 'tracker:transaction_delete' transaction.pk %}"
+                    >
+                      Delete
+                    </a>
+                  </div>
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
     {% else %}
-      <p>You do not have any transactions yet.</p>
-    {% endif %}
-  {% endif %}
+      <div class="empty-state">
+        {% if filters_are_active %}
+          <p>No transactions matched your filters.</p>
 
-  {% if page_obj.paginator.num_pages > 1 %}
-    <nav aria-label="Transaction pagination">
-      {% if page_obj.has_previous %}
-        <a href="?{% if query_string %}{{ query_string }}&{% endif %}page=1">
-          First
-        </a>
-
-        <a href="?{% if query_string %}{{ query_string }}&{% endif %}page={{ page_obj.previous_page_number }}">
-          Previous
-        </a>
-      {% endif %}
-
-      {% for page_number in page_obj.paginator.page_range %}
-        {% if page_number == page_obj.number %}
-          <strong aria-current="page">{{ page_number }}</strong>
+          <a
+            class="button button-secondary"
+            href="{% url 'tracker:transaction_list' %}"
+          >
+            Clear Filters
+          </a>
         {% else %}
-          <a href="?{% if query_string %}{{ query_string }}&{% endif %}page={{ page_number }}">
-            {{ page_number }}
+          <p>You do not have any transactions yet.</p>
+
+          <a class="button" href="{% url 'tracker:transaction_create' %}">
+            Create Your First Transaction
           </a>
         {% endif %}
-      {% endfor %}
+      </div>
+    {% endif %}
 
-      {% if page_obj.has_next %}
-        <a href="?{% if query_string %}{{ query_string }}&{% endif %}page={{ page_obj.next_page_number }}">
-          Next
-        </a>
+    {% if page_obj.paginator.num_pages > 1 %}
+      <nav class="pagination" aria-label="Transaction pagination">
+        {% if page_obj.has_previous %}
+          <a href="?{% if query_string %}{{ query_string }}&{% endif %}page=1">
+            First
+          </a>
 
-        <a href="?{% if query_string %}{{ query_string }}&{% endif %}page={{ page_obj.paginator.num_pages }}">
-          Last
-        </a>
-      {% endif %}
-    </nav>
+          <a href="?{% if query_string %}{{ query_string }}&{% endif %}page={{ page_obj.previous_page_number }}">
+            Previous
+          </a>
+        {% endif %}
 
-    <p>
-      Page {{ page_obj.number }}
-      of {{ page_obj.paginator.num_pages }}
-    </p>
-  {% endif %}
-</section>
+        {% for page_number in page_obj.paginator.page_range %}
+          {% if page_number == page_obj.number %}
+            <span class="pagination-current" aria-current="page">
+              {{ page_number }}
+            </span>
+          {% else %}
+            <a href="?{% if query_string %}{{ query_string }}&{% endif %}page={{ page_number }}">
+              {{ page_number }}
+            </a>
+          {% endif %}
+        {% endfor %}
+
+        {% if page_obj.has_next %}
+          <a href="?{% if query_string %}{{ query_string }}&{% endif %}page={{ page_obj.next_page_number }}">
+            Next
+          </a>
+
+          <a href="?{% if query_string %}{{ query_string }}&{% endif %}page={{ page_obj.paginator.num_pages }}">
+            Last
+          </a>
+        {% endif %}
+      </nav>
+
+      <p class="page-subtitle">
+        Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}
+      </p>
+    {% endif %}
+  </section>
 {% endblock %}

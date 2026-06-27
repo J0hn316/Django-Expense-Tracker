@@ -5,17 +5,35 @@
 {% endblock %}
 
 {% block content %}
-  <h1>Delete Category</h1>
+  <section class="card form-card">
+    <h1>Delete Category</h1>
 
-  <p>
-    Are you sure you want to delete
-    <strong>{{ category.name }} ({{ category.get_category_type_display }})</strong>?
-  </p>
+    <p>
+      Are you sure you want to delete
+      <strong>
+        {{ category.name }} ({{ category.get_category_type_display }})
+      </strong>?
+    </p>
 
-  <form method="post">
-    {% csrf_token %}
+    <p class="amount-expense">
+      Categories currently used by transactions cannot be deleted.
+    </p>
 
-    <button type="submit">Yes, Delete</button>
-    <a href="{% url 'tracker:category_list' %}">Cancel</a>
-  </form>
+    <form method="post">
+      {% csrf_token %}
+
+      <div class="actions">
+        <button class="button button-danger" type="submit">
+          Yes, Delete
+        </button>
+
+        <a
+          class="button button-secondary"
+          href="{% url 'tracker:category_list' %}"
+        >
+          Cancel
+        </a>
+      </div>
+    </form>
+  </section>
 {% endblock %}

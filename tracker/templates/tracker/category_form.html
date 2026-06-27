@@ -5,17 +5,26 @@
 {% endblock %}
 
 {% block content %}
-  <h1>{{ page_title }}</h1>
+  <section class="card form-card">
+    <h1>{{ page_title }}</h1>
 
-  <form method="post">
-    {% csrf_token %}
+    <form method="post">
+      {% csrf_token %}
 
-    {{ form.as_p }}
+      {{ form.as_p }}
 
-    <button type="submit">{{ button_text }}</button>
-  </form>
+      <div class="actions">
+        <button class="button" type="submit">
+          {{ button_text }}
+        </button>
 
-  <p>
-    <a href="{% url 'tracker:category_list' %}">Back to Categories</a>
-  </p>
+        <a
+          class="button button-secondary"
+          href="{% url 'tracker:category_list' %}"
+        >
+          Cancel
+        </a>
+      </div>
+    </form>
+  </section>
 {% endblock %}

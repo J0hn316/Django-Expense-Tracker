@@ -23,10 +23,10 @@ class HomeViewTests(TestCase):
 
         self.assertTemplateUsed(response, "tracker/home.html")
 
-    def test_home_page_contains_project_name(self) -> None:
+    def test_home_page_contains_hero_heading(self) -> None:
         response = self.client.get(reverse("tracker:home"))
 
-        self.assertContains(response, "Personal Expense Tracker")
+        self.assertContains(response, "Take control of your finances")
 
 
 class RegisterViewTests(TestCase):
@@ -68,7 +68,7 @@ class RegisterViewTests(TestCase):
         response = self.client.get(reverse("tracker:dashboard"))
 
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "Welcome, johnny.")
+        self.assertContains(response, "Welcome back, johnny.")
 
 
 class LoginViewTests(TestCase):
@@ -117,7 +117,7 @@ class DashboardViewTests(TestCase):
         response = self.client.get(reverse("tracker:dashboard"))
 
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, f"Welcome, {user.username}.")
+        self.assertContains(response, f"Welcome back, {user.username}.")
 
 
 class DashboardAggregationTests(TestCase):
@@ -1616,4 +1616,77 @@ class TransactionValidationTests(TestCase):
         )
         self.assertFalse(
             Transaction.objects.filter(description="Tampered category").exists()
+        )
+
+
+class TemplatePolishTests(TestCase):
+    def setUp(self) -> None:
+        self.user = User.objects.create_user(
+            username="johnny",
+            password="StrongPass123!",
+        )
+        self.category = Category.objects.create(
+            user=self.user,
+            name="Food",
+            category_type=Category.CategoryType.EXPENSE,
+        )
+
+    def test_base_template_loads_stylesheet(self) -> None:
+        response = self.client.get(reverse("tracker:home"))
+
+        self.assertContains(
+            response,
+            'href="/static/tracker/styles.css"',
+        )
+
+    def test_dashboard_uses_summary_card_layout(self) -> None:
+        self.client.login(
+            username="johnny",
+            password="StrongPass123!",
+        )
+
+        response = self.client.get(reverse("tracker:dashboard"))
+
+        self.assertContains(response, 'class="summary-grid"')
+        self.assertContains(response, "Total Income")
+        self.assertContains(response, "Total Expenses")
+        self.assertContains(response, "Balance")
+
+    def test_success_message_uses_success_alert_class(self) -> None:
+        self.client.login(
+            username="johnny",
+            password="StrongPass123!",
+        )
+
+        response = self.client.post(
+            reverse("tracker:category_create"),
+            {
+                "name": "Transportation",
+                "category_type": Category.CategoryType.EXPENSE,
+            },
+            follow=True,
+        )
+
+        self.assertContains(
+            response,
+            "Category created successfully.",
+        )
+        self.assertContains(
+            response,
+            "alert-success",
+        )
+
+    def test_login_form_preserves_next_destination(self) -> None:
+        response = self.client.get(
+            reverse("login"),
+            {"next": reverse("tracker:dashboard")},
+        )
+
+        self.assertContains(
+            response,
+            'name="next"',
+        )
+        self.assertContains(
+            response,
+            f'value="{reverse("tracker:dashboard")}"',
         )
