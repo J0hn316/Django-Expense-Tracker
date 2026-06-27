@@ -63,7 +63,9 @@ htmlcov/
 .DS_Store
 Thumbs.db
 
-# -------------------------
-# Node / Tailwind
-# -------------------------
-node_modules/
+# Type-checking and linting caches
+.mypy_cache/
+.ruff_cache/
+
+# Static files collected for production
+staticfiles/
