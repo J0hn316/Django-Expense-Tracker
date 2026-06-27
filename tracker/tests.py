@@ -1,5 +1,6 @@
-from datetime import date
 from decimal import Decimal
+from django.utils import timezone
+from datetime import date, timedelta
 
 from django.urls import reverse
 from django.test import TestCase
@@ -70,27 +71,6 @@ class RegisterViewTests(TestCase):
         self.assertContains(response, "Welcome, johnny.")
 
 
-class DashboardViewTests(TestCase):
-    def test_logged_out_user_is_redirected_from_dashboard(self) -> None:
-        response = self.client.get(reverse("tracker:dashboard"))
-
-        expected_url = f"{reverse('login')}?next={reverse('tracker:dashboard')}"
-        self.assertRedirects(response, expected_url)
-
-    def test_logged_in_user_can_view_dashboard(self) -> None:
-        user = User.objects.create_user(
-            username="johnny",
-            password="StrongPass123!",
-        )
-
-        self.client.login(username="johnny", password="StrongPass123!")
-
-        response = self.client.get(reverse("tracker:dashboard"))
-
-        self.assertEqual(response.status_code, 200)
-        self.assertContains(response, f"Welcome, {user.username}.")
-
-
 class LoginViewTests(TestCase):
     def test_login_page_returns_successful_response(self) -> None:
         response = self.client.get(reverse("login"))
@@ -117,6 +97,193 @@ class LoginViewTests(TestCase):
         )
 
         self.assertRedirects(response, reverse("tracker:dashboard"))
+
+
+class DashboardViewTests(TestCase):
+    def test_logged_out_user_is_redirected_from_dashboard(self) -> None:
+        response = self.client.get(reverse("tracker:dashboard"))
+
+        expected_url = f"{reverse('login')}?next={reverse('tracker:dashboard')}"
+        self.assertRedirects(response, expected_url)
+
+    def test_logged_in_user_can_view_dashboard(self) -> None:
+        user = User.objects.create_user(
+            username="johnny",
+            password="StrongPass123!",
+        )
+
+        self.client.login(username="johnny", password="StrongPass123!")
+
+        response = self.client.get(reverse("tracker:dashboard"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, f"Welcome, {user.username}.")
+
+
+class DashboardAggregationTests(TestCase):
+    def setUp(self) -> None:
+        self.user = User.objects.create_user(
+            username="johnny",
+            password="StrongPass123!",
+        )
+        self.other_user = User.objects.create_user(
+            username="jane",
+            password="StrongPass123!",
+        )
+
+        self.food_category = Category.objects.create(
+            user=self.user,
+            name="Food",
+            category_type=Category.CategoryType.EXPENSE,
+        )
+        self.housing_category = Category.objects.create(
+            user=self.user,
+            name="Housing",
+            category_type=Category.CategoryType.EXPENSE,
+        )
+        self.income_category = Category.objects.create(
+            user=self.user,
+            name="Paycheck",
+            category_type=Category.CategoryType.INCOME,
+        )
+
+        self.other_user_category = Category.objects.create(
+            user=self.other_user,
+            name="Jane Food",
+            category_type=Category.CategoryType.EXPENSE,
+        )
+
+        Transaction.objects.create(
+            user=self.user,
+            category=self.income_category,
+            transaction_type=Transaction.TransactionType.INCOME,
+            amount=Decimal("1500.00"),
+            description="First paycheck",
+            transaction_date=date(2026, 6, 1),
+        )
+        Transaction.objects.create(
+            user=self.user,
+            category=self.income_category,
+            transaction_type=Transaction.TransactionType.INCOME,
+            amount=Decimal("1500.00"),
+            description="Second paycheck",
+            transaction_date=date(2026, 6, 15),
+        )
+        Transaction.objects.create(
+            user=self.user,
+            category=self.food_category,
+            transaction_type=Transaction.TransactionType.EXPENSE,
+            amount=Decimal("75.50"),
+            description="Groceries",
+            transaction_date=date(2026, 6, 10),
+        )
+        Transaction.objects.create(
+            user=self.user,
+            category=self.food_category,
+            transaction_type=Transaction.TransactionType.EXPENSE,
+            amount=Decimal("25.00"),
+            description="Restaurant",
+            transaction_date=date(2026, 6, 12),
+        )
+        Transaction.objects.create(
+            user=self.user,
+            category=self.housing_category,
+            transaction_type=Transaction.TransactionType.EXPENSE,
+            amount=Decimal("950.00"),
+            description="Rent",
+            transaction_date=date(2026, 6, 5),
+        )
+
+        Transaction.objects.create(
+            user=self.other_user,
+            category=self.other_user_category,
+            transaction_type=Transaction.TransactionType.EXPENSE,
+            amount=Decimal("9999.99"),
+            description="Jane private expense",
+            transaction_date=date(2026, 6, 20),
+        )
+
+    def test_dashboard_displays_total_income(self) -> None:
+        self.client.login(username="johnny", password="StrongPass123!")
+
+        response = self.client.get(reverse("tracker:dashboard"))
+
+        self.assertEqual(response.context["total_income"], Decimal("3000.00"))
+        self.assertContains(response, "3000.00")
+
+    def test_dashboard_displays_total_expenses(self) -> None:
+        self.client.login(username="johnny", password="StrongPass123!")
+
+        response = self.client.get(reverse("tracker:dashboard"))
+
+        self.assertEqual(response.context["total_expenses"], Decimal("1050.50"))
+        self.assertContains(response, "1050.50")
+
+    def test_dashboard_calculates_balance(self) -> None:
+        self.client.login(username="johnny", password="StrongPass123!")
+
+        response = self.client.get(reverse("tracker:dashboard"))
+
+        self.assertEqual(response.context["balance"], Decimal("1949.50"))
+        self.assertContains(response, "1949.50")
+
+    def test_dashboard_groups_expenses_by_category(self) -> None:
+        self.client.login(username="johnny", password="StrongPass123!")
+
+        response = self.client.get(reverse("tracker:dashboard"))
+
+        category_totals = list(response.context["expense_totals_by_category"])
+
+        self.assertEqual(
+            category_totals,
+            [
+                {
+                    "category__name": "Housing",
+                    "total": Decimal("950.00"),
+                },
+                {
+                    "category__name": "Food",
+                    "total": Decimal("100.50"),
+                },
+            ],
+        )
+
+    def test_dashboard_does_not_include_another_users_transactions(self) -> None:
+        self.client.login(username="johnny", password="StrongPass123!")
+
+        response = self.client.get(reverse("tracker:dashboard"))
+
+        self.assertEqual(response.context["total_income"], Decimal("3000.00"))
+        self.assertEqual(response.context["total_expenses"], Decimal("1050.50"))
+        self.assertNotContains(response, "Jane private expense")
+        self.assertNotContains(response, "9999.99")
+
+    def test_dashboard_displays_five_most_recent_transactions(self) -> None:
+        self.client.login(username="johnny", password="StrongPass123!")
+
+        response = self.client.get(reverse("tracker:dashboard"))
+
+        recent_transactions = list(response.context["recent_transactions"])
+
+        self.assertEqual(len(recent_transactions), 5)
+        self.assertEqual(recent_transactions[0].description, "Second paycheck")
+        self.assertEqual(recent_transactions[1].description, "Restaurant")
+        self.assertEqual(recent_transactions[2].description, "Groceries")
+
+    def test_dashboard_with_no_transactions_uses_zero_totals(self) -> None:
+        User.objects.create_user(
+            username="emptyuser",
+            password="StrongPass123!",
+        )
+        self.client.login(username="emptyuser", password="StrongPass123!")
+
+        response = self.client.get(reverse("tracker:dashboard"))
+
+        self.assertEqual(response.context["total_income"], Decimal("0.00"))
+        self.assertEqual(response.context["total_expenses"], Decimal("0.00"))
+        self.assertEqual(response.context["balance"], Decimal("0.00"))
+        self.assertContains(response, "No expense data is available yet.")
+        self.assertContains(response, "You do not have any transactions yet.")
 
 
 class CategoryModelTests(TestCase):
@@ -214,168 +381,6 @@ class CategoryModelTests(TestCase):
         )
 
         self.assertEqual(Category.objects.filter(name="Food").count(), 2)
-
-
-class TransactionModelTests(TestCase):
-    def setUp(self) -> None:
-        self.user = User.objects.create_user(
-            username="johnny",
-            password="StrongPass123!",
-        )
-        self.other_user = User.objects.create_user(
-            username="jane",
-            password="StrongPass123!",
-        )
-
-        self.expense_category = Category.objects.create(
-            user=self.user,
-            name="Food",
-            category_type=Category.CategoryType.EXPENSE,
-        )
-        self.income_category = Category.objects.create(
-            user=self.user,
-            name="Paycheck",
-            category_type=Category.CategoryType.INCOME,
-        )
-        self.other_user_expense_category = Category.objects.create(
-            user=self.other_user,
-            name="Food",
-            category_type=Category.CategoryType.EXPENSE,
-        )
-
-    def test_expense_transaction_can_be_created(self) -> None:
-        transaction = Transaction.objects.create(
-            user=self.user,
-            category=self.expense_category,
-            transaction_type=Transaction.TransactionType.EXPENSE,
-            amount=Decimal("84.32"),
-            description="Groceries",
-            transaction_date=date(2026, 6, 11),
-        )
-
-        self.assertEqual(transaction.user, self.user)
-        self.assertEqual(transaction.category, self.expense_category)
-        self.assertEqual(
-            transaction.transaction_type, Transaction.TransactionType.EXPENSE
-        )
-        self.assertEqual(transaction.amount, Decimal("84.32"))
-        self.assertEqual(transaction.description, "Groceries")
-
-    def test_income_transaction_can_be_created(self) -> None:
-        transaction = Transaction.objects.create(
-            user=self.user,
-            category=self.income_category,
-            transaction_type=Transaction.TransactionType.INCOME,
-            amount=Decimal("2000.00"),
-            description="Biweekly paycheck",
-            transaction_date=date(2026, 6, 11),
-        )
-
-        self.assertEqual(
-            transaction.transaction_type, Transaction.TransactionType.INCOME
-        )
-        self.assertEqual(transaction.amount, Decimal("2000.00"))
-
-    def test_transaction_string_representation(self) -> None:
-        transaction = Transaction.objects.create(
-            user=self.user,
-            category=self.expense_category,
-            transaction_type=Transaction.TransactionType.EXPENSE,
-            amount=Decimal("84.32"),
-            description="Groceries",
-            transaction_date=date(2026, 6, 11),
-        )
-
-        self.assertEqual(str(transaction), "Groceries - 84.32")
-
-    def test_transaction_amount_must_be_positive(self) -> None:
-        transaction = Transaction(
-            user=self.user,
-            category=self.expense_category,
-            transaction_type=Transaction.TransactionType.EXPENSE,
-            amount=Decimal("0.00"),
-            description="Invalid groceries",
-            transaction_date=date(2026, 6, 11),
-        )
-
-        with self.assertRaises(ValidationError):
-            transaction.full_clean()
-
-    def test_transaction_category_must_belong_to_same_user(self) -> None:
-        transaction = Transaction(
-            user=self.user,
-            category=self.other_user_expense_category,
-            transaction_type=Transaction.TransactionType.EXPENSE,
-            amount=Decimal("84.32"),
-            description="Groceries",
-            transaction_date=date(2026, 6, 11),
-        )
-
-        with self.assertRaises(ValidationError):
-            transaction.full_clean()
-
-    def test_transaction_type_must_match_category_type(self) -> None:
-        transaction = Transaction(
-            user=self.user,
-            category=self.income_category,
-            transaction_type=Transaction.TransactionType.EXPENSE,
-            amount=Decimal("84.32"),
-            description="Groceries",
-            transaction_date=date(2026, 6, 11),
-        )
-
-        with self.assertRaises(ValidationError):
-            transaction.full_clean()
-
-    def test_category_with_transactions_cannot_be_deleted(self) -> None:
-        Transaction.objects.create(
-            user=self.user,
-            category=self.expense_category,
-            transaction_type=Transaction.TransactionType.EXPENSE,
-            amount=Decimal("84.32"),
-            description="Groceries",
-            transaction_date=date(2026, 6, 11),
-        )
-
-        with self.assertRaises(RestrictedError):
-            self.expense_category.delete()
-
-    def test_user_deletion_deletes_user_transactions(self) -> None:
-        Transaction.objects.create(
-            user=self.user,
-            category=self.expense_category,
-            transaction_type=Transaction.TransactionType.EXPENSE,
-            amount=Decimal("84.32"),
-            description="Groceries",
-            transaction_date=date(2026, 6, 11),
-        )
-
-        self.user.delete()
-
-        self.assertFalse(Transaction.objects.filter(description="Groceries").exists())
-
-    def test_transactions_are_ordered_by_newest_date_first(self) -> None:
-        older_transaction = Transaction.objects.create(
-            user=self.user,
-            category=self.expense_category,
-            transaction_type=Transaction.TransactionType.EXPENSE,
-            amount=Decimal("25.00"),
-            description="Older transaction",
-            transaction_date=date(2026, 5, 1),
-        )
-        newer_transaction = Transaction.objects.create(
-            user=self.user,
-            category=self.expense_category,
-            transaction_type=Transaction.TransactionType.EXPENSE,
-            amount=Decimal("40.00"),
-            description="Newer transaction",
-            transaction_date=date(2026, 6, 1),
-        )
-
-        transactions = list(Transaction.objects.all())
-
-        self.assertEqual(transactions[0], newer_transaction)
-        self.assertEqual(transactions[1], older_transaction)
 
 
 class CategoryViewTests(TestCase):
@@ -549,6 +554,222 @@ class CategoryViewTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertTemplateUsed(response, "tracker/category_confirm_delete.html")
         self.assertContains(response, "Are you sure you want to delete")
+
+
+class TransactionModelTests(TestCase):
+    def setUp(self) -> None:
+        self.user = User.objects.create_user(
+            username="johnny",
+            password="StrongPass123!",
+        )
+        self.other_user = User.objects.create_user(
+            username="jane",
+            password="StrongPass123!",
+        )
+
+        self.expense_category = Category.objects.create(
+            user=self.user,
+            name="Food",
+            category_type=Category.CategoryType.EXPENSE,
+        )
+        self.income_category = Category.objects.create(
+            user=self.user,
+            name="Paycheck",
+            category_type=Category.CategoryType.INCOME,
+        )
+        self.other_user_expense_category = Category.objects.create(
+            user=self.other_user,
+            name="Food",
+            category_type=Category.CategoryType.EXPENSE,
+        )
+
+    def test_expense_transaction_can_be_created(self) -> None:
+        transaction = Transaction.objects.create(
+            user=self.user,
+            category=self.expense_category,
+            transaction_type=Transaction.TransactionType.EXPENSE,
+            amount=Decimal("84.32"),
+            description="Groceries",
+            transaction_date=date(2026, 6, 11),
+        )
+
+        self.assertEqual(transaction.user, self.user)
+        self.assertEqual(transaction.category, self.expense_category)
+        self.assertEqual(
+            transaction.transaction_type, Transaction.TransactionType.EXPENSE
+        )
+        self.assertEqual(transaction.amount, Decimal("84.32"))
+        self.assertEqual(transaction.description, "Groceries")
+
+    def test_income_transaction_can_be_created(self) -> None:
+        transaction = Transaction.objects.create(
+            user=self.user,
+            category=self.income_category,
+            transaction_type=Transaction.TransactionType.INCOME,
+            amount=Decimal("2000.00"),
+            description="Biweekly paycheck",
+            transaction_date=date(2026, 6, 11),
+        )
+
+        self.assertEqual(
+            transaction.transaction_type, Transaction.TransactionType.INCOME
+        )
+        self.assertEqual(transaction.amount, Decimal("2000.00"))
+
+    def test_transaction_string_representation(self) -> None:
+        transaction = Transaction.objects.create(
+            user=self.user,
+            category=self.expense_category,
+            transaction_type=Transaction.TransactionType.EXPENSE,
+            amount=Decimal("84.32"),
+            description="Groceries",
+            transaction_date=date(2026, 6, 11),
+        )
+
+        self.assertEqual(str(transaction), "Groceries - 84.32")
+
+    def test_transaction_amount_must_be_positive(self) -> None:
+        transaction = Transaction(
+            user=self.user,
+            category=self.expense_category,
+            transaction_type=Transaction.TransactionType.EXPENSE,
+            amount=Decimal("0.00"),
+            description="Invalid groceries",
+            transaction_date=date(2026, 6, 11),
+        )
+
+        with self.assertRaises(ValidationError):
+            transaction.full_clean()
+
+    def test_transaction_category_must_belong_to_same_user(self) -> None:
+        transaction = Transaction(
+            user=self.user,
+            category=self.other_user_expense_category,
+            transaction_type=Transaction.TransactionType.EXPENSE,
+            amount=Decimal("84.32"),
+            description="Groceries",
+            transaction_date=date(2026, 6, 11),
+        )
+
+        with self.assertRaises(ValidationError):
+            transaction.full_clean()
+
+    def test_transaction_type_must_match_category_type(self) -> None:
+        transaction = Transaction(
+            user=self.user,
+            category=self.income_category,
+            transaction_type=Transaction.TransactionType.EXPENSE,
+            amount=Decimal("84.32"),
+            description="Groceries",
+            transaction_date=date(2026, 6, 11),
+        )
+
+        with self.assertRaises(ValidationError):
+            transaction.full_clean()
+
+    def test_category_with_transactions_cannot_be_deleted(self) -> None:
+        Transaction.objects.create(
+            user=self.user,
+            category=self.expense_category,
+            transaction_type=Transaction.TransactionType.EXPENSE,
+            amount=Decimal("84.32"),
+            description="Groceries",
+            transaction_date=date(2026, 6, 11),
+        )
+
+        with self.assertRaises(RestrictedError):
+            self.expense_category.delete()
+
+    def test_user_deletion_deletes_user_transactions(self) -> None:
+        Transaction.objects.create(
+            user=self.user,
+            category=self.expense_category,
+            transaction_type=Transaction.TransactionType.EXPENSE,
+            amount=Decimal("84.32"),
+            description="Groceries",
+            transaction_date=date(2026, 6, 11),
+        )
+
+        self.user.delete()
+
+        self.assertFalse(Transaction.objects.filter(description="Groceries").exists())
+
+    def test_transactions_are_ordered_by_newest_date_first(self) -> None:
+        older_transaction = Transaction.objects.create(
+            user=self.user,
+            category=self.expense_category,
+            transaction_type=Transaction.TransactionType.EXPENSE,
+            amount=Decimal("25.00"),
+            description="Older transaction",
+            transaction_date=date(2026, 5, 1),
+        )
+        newer_transaction = Transaction.objects.create(
+            user=self.user,
+            category=self.expense_category,
+            transaction_type=Transaction.TransactionType.EXPENSE,
+            amount=Decimal("40.00"),
+            description="Newer transaction",
+            transaction_date=date(2026, 6, 1),
+        )
+
+        transactions = list(Transaction.objects.all())
+
+        self.assertEqual(transactions[0], newer_transaction)
+        self.assertEqual(transactions[1], older_transaction)
+
+    def test_transaction_date_cannot_be_in_future(self) -> None:
+        future_date = timezone.localdate() + timedelta(days=1)
+
+        transaction = Transaction(
+            user=self.user,
+            category=self.expense_category,
+            transaction_type=Transaction.TransactionType.EXPENSE,
+            amount=Decimal("25.00"),
+            description="Future transaction",
+            transaction_date=future_date,
+        )
+
+        with self.assertRaises(ValidationError) as context:
+            transaction.full_clean()
+
+        self.assertIn("transaction_date", context.exception.message_dict)
+        self.assertIn(
+            "Transaction date cannot be in the future.",
+            context.exception.message_dict["transaction_date"],
+        )
+
+    def test_transaction_description_is_stripped(self) -> None:
+        transaction = Transaction(
+            user=self.user,
+            category=self.expense_category,
+            transaction_type=Transaction.TransactionType.EXPENSE,
+            amount=Decimal("25.00"),
+            description="   Groceries   ",
+            transaction_date=timezone.localdate(),
+        )
+
+        transaction.full_clean()
+
+        self.assertEqual(transaction.description, "Groceries")
+
+    def test_transaction_description_cannot_be_only_whitespace(self) -> None:
+        transaction = Transaction(
+            user=self.user,
+            category=self.expense_category,
+            transaction_type=Transaction.TransactionType.EXPENSE,
+            amount=Decimal("25.00"),
+            description="      ",
+            transaction_date=timezone.localdate(),
+        )
+
+        with self.assertRaises(ValidationError) as context:
+            transaction.full_clean()
+
+        self.assertIn("description", context.exception.message_dict)
+        self.assertIn(
+            "Description cannot contain only whitespace.",
+            context.exception.message_dict["description"],
+        )
 
 
 class TransactionViewTests(TestCase):
@@ -810,172 +1031,6 @@ class TransactionViewTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertTemplateUsed(response, "tracker/transaction_confirm_delete.html")
         self.assertContains(response, "Are you sure you want to delete")
-
-
-class DashboardAggregationTests(TestCase):
-    def setUp(self) -> None:
-        self.user = User.objects.create_user(
-            username="johnny",
-            password="StrongPass123!",
-        )
-        self.other_user = User.objects.create_user(
-            username="jane",
-            password="StrongPass123!",
-        )
-
-        self.food_category = Category.objects.create(
-            user=self.user,
-            name="Food",
-            category_type=Category.CategoryType.EXPENSE,
-        )
-        self.housing_category = Category.objects.create(
-            user=self.user,
-            name="Housing",
-            category_type=Category.CategoryType.EXPENSE,
-        )
-        self.income_category = Category.objects.create(
-            user=self.user,
-            name="Paycheck",
-            category_type=Category.CategoryType.INCOME,
-        )
-
-        self.other_user_category = Category.objects.create(
-            user=self.other_user,
-            name="Jane Food",
-            category_type=Category.CategoryType.EXPENSE,
-        )
-
-        Transaction.objects.create(
-            user=self.user,
-            category=self.income_category,
-            transaction_type=Transaction.TransactionType.INCOME,
-            amount=Decimal("1500.00"),
-            description="First paycheck",
-            transaction_date=date(2026, 6, 1),
-        )
-        Transaction.objects.create(
-            user=self.user,
-            category=self.income_category,
-            transaction_type=Transaction.TransactionType.INCOME,
-            amount=Decimal("1500.00"),
-            description="Second paycheck",
-            transaction_date=date(2026, 6, 15),
-        )
-        Transaction.objects.create(
-            user=self.user,
-            category=self.food_category,
-            transaction_type=Transaction.TransactionType.EXPENSE,
-            amount=Decimal("75.50"),
-            description="Groceries",
-            transaction_date=date(2026, 6, 10),
-        )
-        Transaction.objects.create(
-            user=self.user,
-            category=self.food_category,
-            transaction_type=Transaction.TransactionType.EXPENSE,
-            amount=Decimal("25.00"),
-            description="Restaurant",
-            transaction_date=date(2026, 6, 12),
-        )
-        Transaction.objects.create(
-            user=self.user,
-            category=self.housing_category,
-            transaction_type=Transaction.TransactionType.EXPENSE,
-            amount=Decimal("950.00"),
-            description="Rent",
-            transaction_date=date(2026, 6, 5),
-        )
-
-        Transaction.objects.create(
-            user=self.other_user,
-            category=self.other_user_category,
-            transaction_type=Transaction.TransactionType.EXPENSE,
-            amount=Decimal("9999.99"),
-            description="Jane private expense",
-            transaction_date=date(2026, 6, 20),
-        )
-
-    def test_dashboard_displays_total_income(self) -> None:
-        self.client.login(username="johnny", password="StrongPass123!")
-
-        response = self.client.get(reverse("tracker:dashboard"))
-
-        self.assertEqual(response.context["total_income"], Decimal("3000.00"))
-        self.assertContains(response, "3000.00")
-
-    def test_dashboard_displays_total_expenses(self) -> None:
-        self.client.login(username="johnny", password="StrongPass123!")
-
-        response = self.client.get(reverse("tracker:dashboard"))
-
-        self.assertEqual(response.context["total_expenses"], Decimal("1050.50"))
-        self.assertContains(response, "1050.50")
-
-    def test_dashboard_calculates_balance(self) -> None:
-        self.client.login(username="johnny", password="StrongPass123!")
-
-        response = self.client.get(reverse("tracker:dashboard"))
-
-        self.assertEqual(response.context["balance"], Decimal("1949.50"))
-        self.assertContains(response, "1949.50")
-
-    def test_dashboard_groups_expenses_by_category(self) -> None:
-        self.client.login(username="johnny", password="StrongPass123!")
-
-        response = self.client.get(reverse("tracker:dashboard"))
-
-        category_totals = list(response.context["expense_totals_by_category"])
-
-        self.assertEqual(
-            category_totals,
-            [
-                {
-                    "category__name": "Housing",
-                    "total": Decimal("950.00"),
-                },
-                {
-                    "category__name": "Food",
-                    "total": Decimal("100.50"),
-                },
-            ],
-        )
-
-    def test_dashboard_does_not_include_another_users_transactions(self) -> None:
-        self.client.login(username="johnny", password="StrongPass123!")
-
-        response = self.client.get(reverse("tracker:dashboard"))
-
-        self.assertEqual(response.context["total_income"], Decimal("3000.00"))
-        self.assertEqual(response.context["total_expenses"], Decimal("1050.50"))
-        self.assertNotContains(response, "Jane private expense")
-        self.assertNotContains(response, "9999.99")
-
-    def test_dashboard_displays_five_most_recent_transactions(self) -> None:
-        self.client.login(username="johnny", password="StrongPass123!")
-
-        response = self.client.get(reverse("tracker:dashboard"))
-
-        recent_transactions = list(response.context["recent_transactions"])
-
-        self.assertEqual(len(recent_transactions), 5)
-        self.assertEqual(recent_transactions[0].description, "Second paycheck")
-        self.assertEqual(recent_transactions[1].description, "Restaurant")
-        self.assertEqual(recent_transactions[2].description, "Groceries")
-
-    def test_dashboard_with_no_transactions_uses_zero_totals(self) -> None:
-        User.objects.create_user(
-            username="emptyuser",
-            password="StrongPass123!",
-        )
-        self.client.login(username="emptyuser", password="StrongPass123!")
-
-        response = self.client.get(reverse("tracker:dashboard"))
-
-        self.assertEqual(response.context["total_income"], Decimal("0.00"))
-        self.assertEqual(response.context["total_expenses"], Decimal("0.00"))
-        self.assertEqual(response.context["balance"], Decimal("0.00"))
-        self.assertContains(response, "No expense data is available yet.")
-        self.assertContains(response, "You do not have any transactions yet.")
 
 
 class TransactionFilterTests(TestCase):
@@ -1375,3 +1430,190 @@ class TransactionPaginationTests(TestCase):
         self.assertEqual(page_obj.paginator.count, 12)
         self.assertEqual(page_obj.paginator.num_pages, 3)
         self.assertNotContains(response, "Unrelated purchase")
+
+
+class TransactionValidationTests(TestCase):
+    def setUp(self) -> None:
+        self.user = User.objects.create_user(
+            username="johnny",
+            password="StrongPass123!",
+        )
+        self.other_user = User.objects.create_user(
+            username="jane",
+            password="StrongPass123!",
+        )
+
+        self.expense_category = Category.objects.create(
+            user=self.user,
+            name="Food",
+            category_type=Category.CategoryType.EXPENSE,
+        )
+        self.income_category = Category.objects.create(
+            user=self.user,
+            name="Paycheck",
+            category_type=Category.CategoryType.INCOME,
+        )
+        self.other_user_category = Category.objects.create(
+            user=self.other_user,
+            name="Jane Food",
+            category_type=Category.CategoryType.EXPENSE,
+        )
+
+        self.client.login(
+            username="johnny",
+            password="StrongPass123!",
+        )
+
+    def test_future_transaction_date_shows_field_error(self) -> None:
+        future_date = timezone.localdate() + timedelta(days=1)
+
+        response = self.client.post(
+            reverse("tracker:transaction_create"),
+            {
+                "transaction_type": Transaction.TransactionType.EXPENSE,
+                "category": self.expense_category.pk,
+                "amount": "25.00",
+                "description": "Future purchase",
+                "transaction_date": future_date.isoformat(),
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFormError(
+            response.context["form"],
+            "transaction_date",
+            "Transaction date cannot be in the future.",
+        )
+        self.assertFalse(
+            Transaction.objects.filter(description="Future purchase").exists()
+        )
+
+    def test_zero_amount_shows_clear_field_error(self) -> None:
+        response = self.client.post(
+            reverse("tracker:transaction_create"),
+            {
+                "transaction_type": Transaction.TransactionType.EXPENSE,
+                "category": self.expense_category.pk,
+                "amount": "0.00",
+                "description": "Invalid amount",
+                "transaction_date": timezone.localdate().isoformat(),
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFormError(
+            response.context["form"],
+            "amount",
+            "Amount must be at least $0.01.",
+        )
+        self.assertFalse(
+            Transaction.objects.filter(description="Invalid amount").exists()
+        )
+
+    def test_negative_amount_shows_clear_field_error(self) -> None:
+        response = self.client.post(
+            reverse("tracker:transaction_create"),
+            {
+                "transaction_type": Transaction.TransactionType.EXPENSE,
+                "category": self.expense_category.pk,
+                "amount": "-10.00",
+                "description": "Negative amount",
+                "transaction_date": timezone.localdate().isoformat(),
+            },
+        )
+
+        self.assertFormError(
+            response.context["form"],
+            "amount",
+            "Amount must be at least $0.01.",
+        )
+        self.assertFalse(
+            Transaction.objects.filter(description="Negative amount").exists()
+        )
+
+    def test_whitespace_description_shows_field_error(self) -> None:
+        response = self.client.post(
+            reverse("tracker:transaction_create"),
+            {
+                "transaction_type": Transaction.TransactionType.EXPENSE,
+                "category": self.expense_category.pk,
+                "amount": "25.00",
+                "description": "       ",
+                "transaction_date": timezone.localdate().isoformat(),
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFormError(
+            response.context["form"],
+            "description",
+            "Description cannot contain only whitespace.",
+        )
+        self.assertEqual(Transaction.objects.count(), 0)
+
+    def test_description_is_trimmed_before_transaction_is_saved(self) -> None:
+        response = self.client.post(
+            reverse("tracker:transaction_create"),
+            {
+                "transaction_type": Transaction.TransactionType.EXPENSE,
+                "category": self.expense_category.pk,
+                "amount": "25.00",
+                "description": "   Weekly groceries   ",
+                "transaction_date": timezone.localdate().isoformat(),
+            },
+        )
+
+        self.assertRedirects(
+            response,
+            reverse("tracker:transaction_list"),
+        )
+
+        transaction = Transaction.objects.get()
+
+        self.assertEqual(transaction.description, "Weekly groceries")
+
+    def test_tampered_category_type_combination_is_rejected(self) -> None:
+        response = self.client.post(
+            reverse("tracker:transaction_create"),
+            {
+                "transaction_type": Transaction.TransactionType.EXPENSE,
+                "category": self.income_category.pk,
+                "amount": "25.00",
+                "description": "Invalid category combination",
+                "transaction_date": timezone.localdate().isoformat(),
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFormError(
+            response.context["form"],
+            "category",
+            "The selected category type must match the transaction type.",
+        )
+        self.assertFalse(
+            Transaction.objects.filter(
+                description="Invalid category combination"
+            ).exists()
+        )
+
+    def test_tampered_other_user_category_is_rejected(self) -> None:
+        response = self.client.post(
+            reverse("tracker:transaction_create"),
+            {
+                "transaction_type": Transaction.TransactionType.EXPENSE,
+                "category": self.other_user_category.pk,
+                "amount": "25.00",
+                "description": "Tampered category",
+                "transaction_date": timezone.localdate().isoformat(),
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFormError(
+            response.context["form"],
+            "category",
+            "Select a valid choice. That choice is not one of the available choices.",
+        )
+        self.assertFalse(
+            Transaction.objects.filter(description="Tampered category").exists()
+        )

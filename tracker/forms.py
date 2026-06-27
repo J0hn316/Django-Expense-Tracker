@@ -1,5 +1,6 @@
 from django import forms
 from datetime import date
+from decimal import Decimal
 from django.contrib.auth.forms import UserCreationForm
 from django.contrib.auth.models import User
 
@@ -56,6 +57,23 @@ class CategoryForm(forms.ModelForm):
 
 
 class TransactionForm(forms.ModelForm):
+    description = forms.CharField(
+        max_length=255,
+        strip=False,
+    )
+    amount = forms.DecimalField(
+        min_value=Decimal("0.01"),
+        max_digits=10,
+        decimal_places=2,
+        error_messages={
+            "required": "Enter a transaction amount.",
+            "invalid": "Enter a valid monetary amount.",
+            "min_value": "Amount must be at least $0.01.",
+            "max_digits": "Amount cannot contain more than 10 digits.",
+            "max_decimal_places": "Amount cannot contain more than two decimal places.",
+        },
+    )
+
     class Meta:
         model = Transaction
         fields = [
@@ -66,7 +84,12 @@ class TransactionForm(forms.ModelForm):
             "transaction_date",
         ]
         widgets = {
-            "transaction_date": forms.DateInput(attrs={"type": "date"}),
+            "transaction_date": forms.DateInput(
+                attrs={
+                    "type": "date",
+                    "max": date.today().isoformat(),
+                }
+            ),
         }
 
     def __init__(self, *args, user: User | None = None, **kwargs) -> None:
@@ -76,32 +99,6 @@ class TransactionForm(forms.ModelForm):
         if self.user:
             self.instance.user = self.user
             self.fields["category"].queryset = Category.objects.filter(user=self.user)
-
-    def clean_description(self) -> str:
-        description = self.cleaned_data["description"].strip()
-
-        if not description:
-            raise forms.ValidationError("Description cannot be empty.")
-
-        return description
-
-    def clean(self) -> dict:
-        cleaned_data = super().clean()
-
-        category = cleaned_data.get("category")
-        transaction_type = cleaned_data.get("transaction_type")
-
-        if self.user and category and category.user != self.user:
-            raise forms.ValidationError(
-                "The selected category must belong to your account."
-            )
-
-        if category and transaction_type and category.category_type != transaction_type:
-            raise forms.ValidationError(
-                "The selected category type must match the transaction type."
-            )
-
-        return cleaned_data
 
 
 class TransactionFilterForm(forms.Form):

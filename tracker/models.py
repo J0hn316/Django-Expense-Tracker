@@ -79,15 +79,33 @@ class Transaction(models.Model):
         ]
 
     def clean(self) -> None:
-        if self.category_id and self.category.user_id != self.user_id:
-            raise ValidationError(
+        errors: dict[str, str] = {}
+
+        if self.description:
+            self.description = self.description.strip()
+
+        if not self.description:
+            errors["description"] = "Description cannot contain only whitespace."
+
+        if self.transaction_date and self.transaction_date > timezone.localdate():
+            errors["transaction_date"] = "Transaction date cannot be in the future."
+
+        if self.category_id and self.user_id and self.category.user_id != self.user_id:
+            errors["category"] = (
                 "The selected category must belong to the transaction owner."
             )
 
-        if self.category_id and self.category.category_type != self.transaction_type:
-            raise ValidationError(
+        if (
+            self.category_id
+            and self.transaction_type
+            and self.category.category_type != self.transaction_type
+        ):
+            errors["category"] = (
                 "The selected category type must match the transaction type."
             )
+
+        if errors:
+            raise ValidationError(errors)
 
     def __str__(self) -> str:
         return f"{self.description} - {self.amount}"
